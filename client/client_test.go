@@ -7,19 +7,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/watzon/lining/config"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestNewClient(t *testing.T) {
 	tests := []struct {
 		name    string
-		cfg     *config.Config
+		cfg     *Config
 		wantErr bool
 	}{
 		{
 			name: "valid config",
-			cfg: &config.Config{
+			cfg: &Config{
 				Handle:            "test.bsky.social",
 				APIKey:            "test-key",
 				ServerURL:         "https://bsky.social",
@@ -31,7 +30,7 @@ func TestNewClient(t *testing.T) {
 		},
 		{
 			name: "missing handle",
-			cfg: &config.Config{
+			cfg: &Config{
 				APIKey:            "test-key",
 				ServerURL:         "https://bsky.social",
 				Timeout:           30 * time.Second,
@@ -42,7 +41,7 @@ func TestNewClient(t *testing.T) {
 		},
 		{
 			name: "missing api key",
-			cfg: &config.Config{
+			cfg: &Config{
 				Handle:            "test.bsky.social",
 				ServerURL:         "https://bsky.social",
 				Timeout:           30 * time.Second,
@@ -85,7 +84,7 @@ func TestConnect(t *testing.T) {
 	}))
 	defer server.Close()
 
-	cfg := &config.Config{
+	cfg := &Config{
 		Handle:            "test.bsky.social",
 		APIKey:            "test-key",
 		ServerURL:         server.URL,
@@ -123,7 +122,7 @@ func TestGetProfile(t *testing.T) {
 	}))
 	defer server.Close()
 
-	cfg := &config.Config{
+	cfg := &Config{
 		Handle:            "test.bsky.social",
 		APIKey:            "test-key",
 		ServerURL:         server.URL,

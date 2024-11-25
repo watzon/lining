@@ -31,7 +31,7 @@ go get github.com/watzon/lining
 The library uses a configuration struct for initialization:
 
 ```go
-cfg := config.DefaultConfig().
+cfg := client.DefaultConfig().
     WithHandle("your-handle.bsky.social").
     WithAPIKey("your-api-key")
 
@@ -63,7 +63,6 @@ import (
 
     "github.com/joho/godotenv"
     "github.com/watzon/lining/client"
-    "github.com/watzon/lining/config"
     "github.com/watzon/lining/models"
 )
 
@@ -74,7 +73,7 @@ func main() {
     }
 
     // Create a new client
-    cfg := config.DefaultConfig().
+    cfg := client.DefaultConfig().
         WithHandle(os.Getenv("HANDLE")).
         WithAPIKey(os.Getenv("APIKEY"))
 

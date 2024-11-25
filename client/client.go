@@ -17,8 +17,8 @@ import (
 	"github.com/bluesky-social/indigo/xrpc"
 	"golang.org/x/time/rate"
 
-	"github.com/watzon/lining/config"
 	"github.com/watzon/lining/models"
+	"github.com/watzon/lining/post"
 )
 
 // Client interface defines the methods that a Bluesky client must implement
@@ -36,16 +36,16 @@ type Client interface {
 
 // BskyClient implements the Client interface
 type BskyClient struct {
-	cfg     *config.Config
+	cfg     *Config
 	client  *xrpc.Client
 	limiter *rate.Limiter
 	mu      sync.RWMutex
 }
 
 // NewClient creates a new Bluesky client with the given configuration
-func NewClient(cfg *config.Config) (*BskyClient, error) {
+func NewClient(cfg *Config) (*BskyClient, error) {
 	if cfg == nil {
-		cfg = config.DefaultConfig()
+		cfg = DefaultConfig()
 	}
 
 	// Validate config
@@ -89,28 +89,6 @@ func (c *BskyClient) Connect(ctx context.Context) error {
 	session, err := atproto.ServerCreateSession(ctx, c.client, input)
 	if err != nil {
 		return fmt.Errorf("failed to create session: %w", err)
-	}
-
-	c.mu.Lock()
-	c.client.Auth = &xrpc.AuthInfo{
-		AccessJwt:  session.AccessJwt,
-		RefreshJwt: session.RefreshJwt,
-		Handle:     session.Handle,
-		Did:        session.Did,
-	}
-	c.mu.Unlock()
-
-	return nil
-}
-
-// refreshToken attempts to refresh the access token
-func (c *BskyClient) refreshToken(ctx context.Context) error {
-	c.mu.RLock()
-	c.mu.RUnlock()
-
-	session, err := atproto.ServerRefreshSession(ctx, c.client)
-	if err != nil {
-		return fmt.Errorf("failed to refresh session: %w", err)
 	}
 
 	c.mu.Lock()
@@ -310,12 +288,17 @@ func (c *BskyClient) PostToFeed(ctx context.Context, post appbsky.FeedPost) (str
 
 	resp, err := atproto.RepoCreateRecord(ctx, c.client, &atproto.RepoCreateRecord_Input{
 		Collection: "app.bsky.feed.post",
-		Repo:      c.client.Auth.Did,
-		Record:    &lexutil.LexiconTypeDecoder{Val: newPost},
+		Repo:       c.client.Auth.Did,
+		Record:     &lexutil.LexiconTypeDecoder{Val: newPost},
 	})
 	if err != nil {
 		return "", "", fmt.Errorf("failed to create post: %w", err)
 	}
 
 	return resp.Cid, resp.Uri, nil
+}
+
+// NewPostBuilder creates a new post builder
+func NewPostBuilder(text string) *post.Builder {
+	return post.NewBuilder(text)
 }
