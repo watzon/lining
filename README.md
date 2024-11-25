@@ -52,115 +52,121 @@ Available configuration options:
 
 ## Usage example
 
-Has to provide:
-
-* a handle -  example bluesky handle: "example.bsky.social"
-* an apikey - is used for authentication and the retrieval of the access token and refresh token. To create a new one: Settings -> App Passwords 
-* the server (PDS) - the Bluesky's "PDS Service" is bsky.social. 
-
 ```go
-import "github.com/watzon/lining"
+package main
+
+import (
+    "context"
+    "fmt"
+    "log"
+    "net/url"
+    "os"
+
+    "github.com/joho/godotenv"
+    "github.com/watzon/lining/client"
+    "github.com/watzon/lining/config"
+    "github.com/watzon/lining/models"
+)
 
 func main() {
+    if err := godotenv.Load(); err != nil {
+        log.Fatal(err)
+    }
 
-	godotenv.Load()
-	handle := os.Getenv("HANDLE")
-	apikey := os.Getenv("APIKEY")
-	server := "https://bsky.social"
+    cfg := config.DefaultConfig().
+        WithHandle(os.Getenv("HANDLE")).
+        WithAPIKey(os.Getenv("APIKEY"))
 
-	ctx := context.Background()
+    client, err := client.NewClient(cfg)
+    if err != nil {
+        log.Fatal(err)
+    }
 
-	agent := lining.NewAgent(ctx, server, handle, apikey)
-	agent.Connect(ctx)
+    ctx := context.Background()
+    if err := client.Connect(ctx); err != nil {
+        log.Fatal(err)
+    }
 
-	// Facets Section
-	// =======================================
-	// Facet_type coulf be Facet_Link, Facet_Mention or Facet_Tag
-	// based on the selected type it expect the second argument to be URI, DID, or TAG
-	// the last function argument is the text, part of the original text that is modifiend in Richtext
+    // Facets Section
+    // =======================================
+    // Facet type can be Link, Mention or Tag
+    post1, err := client.NewPostBuilder("Hello to Bluesky, the coolest open social network").
+        WithFacet(models.FacetLink, "https://docs.bsky.app/", "Bluesky").
+        WithFacet(models.FacetTag, "bsky", "open social").
+        Build()
+    if err != nil {
+        log.Fatal(err)
+    }
 
-	post1, err := lining.NewPostBuilder("Hello to Bluesky, the coolest open social network").
-		WithFacet(lining.Facet_Link, "https://docs.bsky.app/", "Bluesky").
-		WithFacet(lining.Facet_Tag, "bsky", "open social").
-		Build()
-	if err != nil {
-		fmt.Printf("Got error: %v", err)
-	}
+    cid1, uri1, err := client.PostToFeed(ctx, post1)
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Printf("Success: Cid = %v, Uri = %v\n", cid1, uri1)
 
-	cid1, uri1, err := agent.PostToFeed(ctx, post1)
-	if err != nil {
-		fmt.Printf("Got error: %v", err)
-	} else {
-		fmt.Printf("Succes: Cid = %v , Uri = %v", cid1, uri1)
-	}
+    // Embed Links section
+    // =======================================
+    u, err := url.Parse("https://go.dev/")
+    if err != nil {
+        log.Fatal(err)
+    }
 
-	// Embed Links section
-	// =======================================
+    previewUrl, err := url.Parse("https://www.freecodecamp.org/news/content/images/2021/10/golang.png")
+    if err != nil {
+        log.Fatal(err)
+    }
+    previewImage := models.Image{
+        Title: "Golang",
+        Uri:   *previewUrl,
+    }
+    previewImageBlob, err := client.UploadImage(ctx, previewImage)
+    if err != nil {
+        log.Fatal(err)
+    }
 
-	u, err := url.Parse("https://go.dev/")
-	if err != nil {
-		log.Fatalf("Parse error, %v", err)
-	}
+    post2, err := client.NewPostBuilder("Hello to Go on Bluesky").
+        WithExternalLink("Go Programming Language", *u, "Build simple, secure, scalable systems with Go", *previewImageBlob).
+        Build()
+    if err != nil {
+        log.Fatal(err)
+    }
 
-	previewUrl, err := url.Parse("https://www.freecodecamp.org/news/content/images/2021/10/golang.png")
-	if err != nil {
-		log.Fatalf("Parse error, %v", err)
-	}
-	previewImage := lining.Image{
-		Title: "Golang",
-		Uri:   *previewUrl,
-	}
-	previewImageBlob, err := agent.UploadImage(ctx, previewImage)
-	if err != nil {
-		log.Fatalf("Parse error, %v", err)
-	}
+    cid2, uri2, err := client.PostToFeed(ctx, post2)
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Printf("Success: Cid = %v, Uri = %v\n", cid2, uri2)
 
-	post2, err := lining.NewPostBuilder("Hello to Go on Bluesky").
-		WithExternalLink("Go Programming Language", *u, "Build simple, secure, scalable systems with Go", *previewImageBlob).
-		Build()
-	if err != nil {
-		fmt.Printf("Got error: %v", err)
-	}
+    // Embed Images section
+    // =======================================
+    images := []models.Image{}
 
-	cid2, uri2, err := agent.PostToFeed(ctx, post2)
-	if err != nil {
-		fmt.Printf("Got error: %v", err)
-	} else {
-		fmt.Printf("Succes: Cid = %v , Uri = %v", cid2, uri2)
-	}
+    url1, err := url.Parse("https://www.freecodecamp.org/news/content/images/2021/10/golang.png")
+    if err != nil {
+        log.Fatal(err)
+    }
+    images = append(images, models.Image{
+        Title: "Golang",
+        Uri:   *url1,
+    })
 
-	// Embed Images section
-	// =======================================
-	images := []lining.Image{}
+    blobs, err := client.UploadImages(ctx, images...)
+    if err != nil {
+        log.Fatal(err)
+    }
 
-	url1, err := url.Parse("https://www.freecodecamp.org/news/content/images/2021/10/golang.png")
-	if err != nil {
-		log.Fatalf("Parse error, %v", err)
-	}
-	images = append(images, lining.Image{
-		Title: "Golang",
-		Uri:   *url1,
-	})
+    post3, err := client.NewPostBuilder("Lining - a simple golang lib to write Bluesky bots").
+        WithImages(images, blobs).
+        Build()
+    if err != nil {
+        log.Fatal(err)
+    }
 
-	blobs, err := agent.UploadImages(ctx, images...)
-	if err != nil {
-		log.Fatalf("Parse error, %v", err)
-	}
-
-	post3, err := lining.NewPostBuilder("Lining - a simple golang lib to write Bluesky bots").
-		WithImages(blobs, images).
-		Build()
-	if err != nil {
-		fmt.Printf("Got error: %v", err)
-	}
-
-	cid3, uri3, err := agent.PostToFeed(ctx, post3)
-	if err != nil {
-		fmt.Printf("Got error: %v", err)
-	} else {
-		fmt.Printf("Succes: Cid = %v , Uri = %v", cid3, uri3)
-	}
-
+    cid3, uri3, err := client.PostToFeed(ctx, post3)
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Printf("Success: Cid = %v, Uri = %v\n", cid3, uri3)
 }
 
 ## Examples
@@ -168,69 +174,98 @@ func main() {
 ### Simple Text Post
 
 ```go
-ctx := context.Background()
-if err := client.Connect(ctx); err != nil {
-    log.Fatal(err)
-}
+package main
 
-post, err := lining.NewPostBuilder("Hello Bluesky!").Build()
-if err != nil {
-    log.Fatal(err)
-}
+import (
+    "context"
+    "fmt"
+    "log"
 
-cid, uri, err := client.PostToFeed(ctx, post)
-if err != nil {
-    log.Fatal(err)
+    "github.com/watzon/lining/client"
+    "github.com/watzon/lining/config"
+)
+
+func main() {
+    cfg := config.DefaultConfig().
+        WithHandle("your-handle.bsky.social").
+        WithAPIKey("your-api-key")
+
+    client, err := client.NewClient(cfg)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    ctx := context.Background()
+    if err := client.Connect(ctx); err != nil {
+        log.Fatal(err)
+    }
+
+    post, err := client.NewPostBuilder("Hello Bluesky!").Build()
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    cid, uri, err := client.PostToFeed(ctx, post)
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Printf("Posted successfully: %s\n", uri)
 }
-fmt.Printf("Posted successfully: %s\n", uri)
 ```
 
 ### Rich Text Post with Mentions and Tags
 
 ```go
-post, err := lining.NewPostBuilder("Check out @someone's #awesome post about #bluesky").
-    WithFacet(lining.Facet_Mention, "did:plc:someone", "@someone").
-    WithFacet(lining.Facet_Tag, "awesome", "#awesome").
-    WithFacet(lining.Facet_Tag, "bluesky", "#bluesky").
-    Build()
+package main
+
+import (
+    "github.com/watzon/lining/client"
+    "github.com/watzon/lining/config"
+    "github.com/watzon/lining/models"
+)
+
+func main() {
+    // ... client setup code ...
+
+    post, err := client.NewPostBuilder("Check out @someone's #awesome post about #bluesky").
+        WithFacet(models.FacetMention, "did:plc:someone", "@someone").
+        WithFacet(models.FacetTag, "awesome", "#awesome").
+        WithFacet(models.FacetTag, "bluesky", "#bluesky").
+        Build()
+}
 ```
 
 ### Post with Image
 
 ```go
-imageUrl, _ := url.Parse("https://example.com/image.png")
-image := lining.Image{
-    Title: "My Image",
-    Uri:   *imageUrl,
+package main
+
+import (
+    "net/url"
+
+    "github.com/watzon/lining/client"
+    "github.com/watzon/lining/config"
+    "github.com/watzon/lining/models"
+)
+
+func main() {
+    // ... client setup code ...
+
+    imageUrl, _ := url.Parse("https://example.com/image.png")
+    image := models.Image{
+        Title: "My Image",
+        Uri:   *imageUrl,
+    }
+
+    blob, err := client.UploadImage(ctx, image)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    post, err := client.NewPostBuilder("Check out this cool image!").
+        WithImages([]models.Image{image}, []blob.Blob{*blob}).
+        Build()
 }
-
-blob, err := client.UploadImage(ctx, image)
-if err != nil {
-    log.Fatal(err)
-}
-
-post, err := lining.NewPostBuilder("Check out this image!").
-    WithImages([]lexutil.LexBlob{*blob}, []lining.Image{image}).
-    Build()
-```
-
-### Follow a User
-
-```go
-err := client.Follow(ctx, "did:plc:someuser")
-if err != nil {
-    log.Fatal(err)
-}
-```
-
-### Get User Profile
-
-```go
-profile, err := client.GetProfile(ctx, "user.bsky.social")
-if err != nil {
-    log.Fatal(err)
-}
-fmt.Printf("Display Name: %s\n", profile.DisplayName)
 ```
 
 ## Contributing
