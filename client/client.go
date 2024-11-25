@@ -284,6 +284,12 @@ func (c *BskyClient) PostToFeed(ctx context.Context, post appbsky.FeedPost) (str
 		Text:          post.Text,
 		CreatedAt:     time.Now().Format(time.RFC3339),
 		Embed:         post.Embed,
+		Facets:        post.Facets,
+		Entities:      post.Entities,
+		Labels:        post.Labels,
+		Langs:         post.Langs,
+		Reply:         post.Reply,
+		Tags:          post.Tags,
 	}
 
 	resp, err := atproto.RepoCreateRecord(ctx, c.client, &atproto.RepoCreateRecord_Input{

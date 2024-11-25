@@ -47,11 +47,11 @@ const (
 func (f FacetType) String() string {
 	switch f {
 	case FacetLink:
-		return "app.bsky.richtext.facet.link"
+		return "app.bsky.richtext.facet#link"
 	case FacetMention:
-		return "app.bsky.richtext.facet.mention"
+		return "app.bsky.richtext.facet#mention"
 	case FacetTag:
-		return "app.bsky.richtext.facet.tag"
+		return "app.bsky.richtext.facet#tag"
 	default:
 		return "unknown"
 	}
