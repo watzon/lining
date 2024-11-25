@@ -59,7 +59,6 @@ import (
     "context"
     "fmt"
     "log"
-    "net/url"
     "os"
 
     "github.com/joho/godotenv"
@@ -69,10 +68,12 @@ import (
 )
 
 func main() {
+    // Load environment variables from .env file
     if err := godotenv.Load(); err != nil {
         log.Fatal(err)
     }
 
+    // Create a new client
     cfg := config.DefaultConfig().
         WithHandle(os.Getenv("HANDLE")).
         WithAPIKey(os.Getenv("APIKEY"))
@@ -82,91 +83,27 @@ func main() {
         log.Fatal(err)
     }
 
+    // Connect to Bluesky
     ctx := context.Background()
     if err := client.Connect(ctx); err != nil {
         log.Fatal(err)
     }
 
-    // Facets Section
-    // =======================================
-    // Facet type can be Link, Mention or Tag
-    post1, err := client.NewPostBuilder("Hello to Bluesky, the coolest open social network").
-        WithFacet(models.FacetLink, "https://docs.bsky.app/", "Bluesky").
-        WithFacet(models.FacetTag, "bsky", "open social").
+    // Create a post with a mention and a tag
+    post, err := client.NewPostBuilder("Hello @watzon! Check out this #bluesky bot!").
+        WithFacet(models.FacetMention, "did:plc:watzon", "@watzon").
+        WithFacet(models.FacetTag, "bluesky", "#bluesky").
         Build()
     if err != nil {
         log.Fatal(err)
     }
 
-    cid1, uri1, err := client.PostToFeed(ctx, post1)
+    // Post to your feed
+    cid, uri, err := client.PostToFeed(ctx, post)
     if err != nil {
         log.Fatal(err)
     }
-    fmt.Printf("Success: Cid = %v, Uri = %v\n", cid1, uri1)
-
-    // Embed Links section
-    // =======================================
-    u, err := url.Parse("https://go.dev/")
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    previewUrl, err := url.Parse("https://www.freecodecamp.org/news/content/images/2021/10/golang.png")
-    if err != nil {
-        log.Fatal(err)
-    }
-    previewImage := models.Image{
-        Title: "Golang",
-        Uri:   *previewUrl,
-    }
-    previewImageBlob, err := client.UploadImage(ctx, previewImage)
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    post2, err := client.NewPostBuilder("Hello to Go on Bluesky").
-        WithExternalLink("Go Programming Language", *u, "Build simple, secure, scalable systems with Go", *previewImageBlob).
-        Build()
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    cid2, uri2, err := client.PostToFeed(ctx, post2)
-    if err != nil {
-        log.Fatal(err)
-    }
-    fmt.Printf("Success: Cid = %v, Uri = %v\n", cid2, uri2)
-
-    // Embed Images section
-    // =======================================
-    images := []models.Image{}
-
-    url1, err := url.Parse("https://www.freecodecamp.org/news/content/images/2021/10/golang.png")
-    if err != nil {
-        log.Fatal(err)
-    }
-    images = append(images, models.Image{
-        Title: "Golang",
-        Uri:   *url1,
-    })
-
-    blobs, err := client.UploadImages(ctx, images...)
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    post3, err := client.NewPostBuilder("Lining - a simple golang lib to write Bluesky bots").
-        WithImages(images, blobs).
-        Build()
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    cid3, uri3, err := client.PostToFeed(ctx, post3)
-    if err != nil {
-        log.Fatal(err)
-    }
-    fmt.Printf("Success: Cid = %v, Uri = %v\n", cid3, uri3)
+    fmt.Printf("Posted successfully! URI: %s\n", uri)
 }
 
 ## Examples
@@ -174,97 +111,114 @@ func main() {
 ### Simple Text Post
 
 ```go
-package main
-
-import (
-    "context"
-    "fmt"
-    "log"
-
-    "github.com/watzon/lining/client"
-    "github.com/watzon/lining/config"
-)
-
-func main() {
-    cfg := config.DefaultConfig().
-        WithHandle("your-handle.bsky.social").
-        WithAPIKey("your-api-key")
-
-    client, err := client.NewClient(cfg)
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    ctx := context.Background()
-    if err := client.Connect(ctx); err != nil {
-        log.Fatal(err)
-    }
-
-    post, err := client.NewPostBuilder("Hello Bluesky!").Build()
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    cid, uri, err := client.PostToFeed(ctx, post)
-    if err != nil {
-        log.Fatal(err)
-    }
-    fmt.Printf("Posted successfully: %s\n", uri)
+post, err := client.NewPostBuilder("Hello Bluesky!").Build()
+if err != nil {
+    log.Fatal(err)
 }
+
+cid, uri, err := client.PostToFeed(ctx, post)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("Posted successfully: %s\n", uri)
 ```
 
-### Rich Text Post with Mentions and Tags
+### Rich Text with Mentions, Links, and Tags
 
 ```go
-package main
-
-import (
-    "github.com/watzon/lining/client"
-    "github.com/watzon/lining/config"
-    "github.com/watzon/lining/models"
-)
-
-func main() {
-    // ... client setup code ...
-
-    post, err := client.NewPostBuilder("Check out @someone's #awesome post about #bluesky").
-        WithFacet(models.FacetMention, "did:plc:someone", "@someone").
-        WithFacet(models.FacetTag, "awesome", "#awesome").
-        WithFacet(models.FacetTag, "bluesky", "#bluesky").
-        Build()
-}
+post, err := client.NewPostBuilder("Check out @someone's link to docs.bsky.app #bluesky").
+    WithFacet(models.FacetMention, "did:plc:someone", "@someone").
+    WithFacet(models.FacetLink, "https://docs.bsky.app", "docs.bsky.app").
+    WithFacet(models.FacetTag, "bluesky", "#bluesky").
+    Build()
 ```
 
-### Post with Image
+### Image Upload Methods
+
+#### 1. Upload from Image struct
 
 ```go
-package main
+// Upload using an Image struct with raw bytes
+imageData, err := os.ReadFile("path/to/image.jpg")
+if err != nil {
+    log.Fatal(err)
+}
 
-import (
-    "net/url"
+image := models.Image{
+    Title: "My Cool Image",
+    Data:  imageData,
+}
 
-    "github.com/watzon/lining/client"
-    "github.com/watzon/lining/config"
-    "github.com/watzon/lining/models"
-)
+blob, err := client.UploadImage(ctx, image)
+if err != nil {
+    log.Fatal(err)
+}
 
-func main() {
-    // ... client setup code ...
+post, err := client.NewPostBuilder("Check out this image!").
+    WithImages([]models.Image{image}, []blob.Blob{*blob}).
+    Build()
+```
 
-    imageUrl, _ := url.Parse("https://example.com/image.png")
-    image := models.Image{
-        Title: "My Image",
-        Uri:   *imageUrl,
-    }
+#### 2. Upload directly from URL
 
-    blob, err := client.UploadImage(ctx, image)
-    if err != nil {
-        log.Fatal(err)
-    }
+```go
+// Upload directly from a URL - no need to create Image struct
+blob, err := client.UploadImageFromURL(ctx, "https://example.com/image.jpg", "Cool Image From URL")
+if err != nil {
+    log.Fatal(err)
+}
 
-    post, err := client.NewPostBuilder("Check out this cool image!").
-        WithImages([]models.Image{image}, []blob.Blob{*blob}).
-        Build()
+image := models.Image{
+    Title: "Cool Image From URL",
+}
+
+post, err := client.NewPostBuilder("Check out this image I found!").
+    WithImages([]models.Image{image}, []blob.Blob{*blob}).
+    Build()
+```
+
+#### 3. Upload from local file
+
+```go
+// Upload from a local file - no need to handle the bytes manually
+blob, err := client.UploadImageFromFile(ctx, "/path/to/local/image.jpg", "My Local Image")
+if err != nil {
+    log.Fatal(err)
+}
+
+image := models.Image{
+    Title: "My Local Image",
+}
+
+post, err := client.NewPostBuilder("Just took this photo!").
+    WithImages([]models.Image{image}, []blob.Blob{*blob}).
+    Build()
+```
+
+### Rich Text with Mentions, Links, and Tags
+
+```go
+post, err := client.NewPostBuilder("Check out @someone's link to docs.bsky.app #bluesky").
+    WithFacet(models.FacetMention, "did:plc:someone", "@someone").
+    WithFacet(models.FacetLink, "https://docs.bsky.app", "docs.bsky.app").
+    WithFacet(models.FacetTag, "bluesky", "#bluesky").
+    Build()
+```
+
+### Profile Operations
+
+```go
+// Get a user's profile
+profile, err := client.GetProfile(ctx, "watzon.bsky.social")
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("Display Name: %s\n", profile.DisplayName)
+
+// Follow a user
+err = client.Follow(ctx, "did:plc:someuser")
+if err != nil {
+    log.Fatal(err)
 }
 ```
 
