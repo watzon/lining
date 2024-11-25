@@ -6,110 +6,115 @@ import (
 	"log"
 	"net/url"
 	"os"
+	"time"
 
+	"github.com/bluesky-social/indigo/api/bsky"
 	"github.com/joho/godotenv"
 
-	gobot "github.com/danrusei/gobot-bsky"
+	"github.com/watzon/lining/client"
+	"github.com/watzon/lining/config"
+	"github.com/watzon/lining/models"
 )
 
 func main() {
-
 	godotenv.Load()
 	handle := os.Getenv("HANDLE")
 	apikey := os.Getenv("APIKEY")
 	server := "https://bsky.social"
 
-	ctx := context.Background()
+	cfg := &config.Config{
+		Handle:            handle,
+		APIKey:            apikey,
+		ServerURL:         server,
+		Timeout:           30 * time.Second,
+		RequestsPerMinute: 60,
+		BurstSize:         5,
+	}
 
-	agent := gobot.NewAgent(ctx, server, handle, apikey)
-	agent.Connect(ctx)
-
-	// Facets Section
-	// =======================================
-	// Facet_type coulf be Facet_Link, Facet_Mention or Facet_Tag
-	// based on the selected type it expect the second argument to be URI, DID, or TAG
-	// the last function argument is the text, part of the original text that is modifiend in Richtext
-
-	post1, err := gobot.NewPostBuilder("Hello to Bluesky, the coolest open social network").
-		WithFacet(gobot.Facet_Link, "https://docs.bsky.app/", "Bluesky").
-		WithFacet(gobot.Facet_Tag, "bsky", "open social").
-		Build()
+	// Create a new client
+	c, err := client.NewClient(cfg)
 	if err != nil {
-		fmt.Printf("Got error: %v", err)
+		log.Fatal(err)
 	}
 
-	cid1, uri1, err := agent.PostToFeed(ctx, post1)
+	// Connect to the server
+	err = c.Connect(context.Background())
 	if err != nil {
-		fmt.Printf("Got error: %v", err)
-	} else {
-		fmt.Printf("Succes: Cid = %v , Uri = %v", cid1, uri1)
+		log.Fatal(err)
 	}
 
-	// Embed Links section
-	// =======================================
-
-	u, err := url.Parse("https://go.dev/")
+	// Create a post with text and link
+	uri, err := url.Parse("https://example.com")
 	if err != nil {
-		log.Fatalf("Parse error, %v", err)
+		log.Fatal(err)
 	}
 
-	previewUrl, err := url.Parse("https://www.freecodecamp.org/news/content/images/2021/10/golang.png")
+	link := models.Link{
+		Uri:         *uri,
+		Title:       "Example Link",
+		Description: "This is an example link",
+	}
+
+	// Create a post with text and link
+	post := bsky.FeedPost{
+		Text:          "Check out this link!",
+		LexiconTypeID: "app.bsky.feed.post",
+		CreatedAt:     time.Now().Format(time.RFC3339),
+		Embed: &bsky.FeedPost_Embed{
+			EmbedExternal: &bsky.EmbedExternal{
+				LexiconTypeID: "app.bsky.embed.external",
+				External: &bsky.EmbedExternal_External{
+					Uri:         link.Uri.String(),
+					Title:       link.Title,
+					Description: link.Description,
+				},
+			},
+		},
+	}
+
+	// Create the post
+	cid, postUri, err := c.PostToFeed(context.Background(), post)
 	if err != nil {
-		log.Fatalf("Parse error, %v", err)
+		log.Fatal(err)
 	}
-	previewImage := gobot.Image{
-		Title: "Golang",
-		Uri:   *previewUrl,
+
+	fmt.Printf("Post created with CID: %s and URI: %s\n", cid, postUri)
+
+	// Create a post with an image
+	img := models.Image{
+		Title: "Example Image",
+		Data:  []byte("example image data"), // In real usage, this would be actual image data
 	}
-	previewImageBlob, err := agent.UploadImage(ctx, previewImage)
+
+	// Upload the image
+	uploadedBlob, err := c.UploadImage(context.Background(), img)
 	if err != nil {
-		log.Fatalf("Parse error, %v", err)
+		log.Fatal(err)
 	}
 
-	post2, err := gobot.NewPostBuilder("Hello to Go on Bluesky").
-		WithExternalLink("Go Programming Language", *u, "Build simple, secure, scalable systems with Go", *previewImageBlob).
-		Build()
+	// Create a post with the image
+	imagePost := bsky.FeedPost{
+		Text:          "Check out this image!",
+		LexiconTypeID: "app.bsky.feed.post",
+		CreatedAt:     time.Now().Format(time.RFC3339),
+		Embed: &bsky.FeedPost_Embed{
+			EmbedImages: &bsky.EmbedImages{
+				LexiconTypeID: "app.bsky.embed.images",
+				Images: []*bsky.EmbedImages_Image{
+					{
+						Alt:   img.Title,
+						Image: uploadedBlob,
+					},
+				},
+			},
+		},
+	}
+
+	// Create the post with image
+	cid, postUri, err = c.PostToFeed(context.Background(), imagePost)
 	if err != nil {
-		fmt.Printf("Got error: %v", err)
+		log.Fatal(err)
 	}
 
-	cid2, uri2, err := agent.PostToFeed(ctx, post2)
-	if err != nil {
-		fmt.Printf("Got error: %v", err)
-	} else {
-		fmt.Printf("Succes: Cid = %v , Uri = %v", cid2, uri2)
-	}
-
-	// Embed Images section
-	// =======================================
-	images := []gobot.Image{}
-
-	url1, err := url.Parse("https://www.freecodecamp.org/news/content/images/2021/10/golang.png")
-	if err != nil {
-		log.Fatalf("Parse error, %v", err)
-	}
-	images = append(images, gobot.Image{
-		Title: "Golang",
-		Uri:   *url1,
-	})
-
-	blobs, err := agent.UploadImages(ctx, images...)
-	if err != nil {
-		log.Fatalf("Parse error, %v", err)
-	}
-
-	post3, err := gobot.NewPostBuilder("Gobot-bsky - a simple golang lib to write Bluesky bots").
-		WithImages(blobs, images).
-		Build()
-	if err != nil {
-		fmt.Printf("Got error: %v", err)
-	}
-
-	cid3, uri3, err := agent.PostToFeed(ctx, post3)
-	if err != nil {
-		fmt.Printf("Got error: %v", err)
-	} else {
-		fmt.Printf("Succes: Cid = %v , Uri = %v", cid3, uri3)
-	}
-
+	fmt.Printf("Image post created with CID: %s and URI: %s\n", cid, postUri)
 }

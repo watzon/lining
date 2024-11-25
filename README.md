@@ -1,17 +1,65 @@
-# gobot-bsky
+# Lining - A Silver Lining for Your Bluesky Bot
 
-Gobot-bsky - a simple GO lib to write Bluesky bots
+A simple Go library for interacting with the Bluesky API
+
+## About
+
+Lining (inspired by "silver lining", as in "every cloud has a silver lining") is a Go library that
+provides a simple interface for creating bots on Bluesky. It handles authentication,
+posting, and other common bot operations through a clean and intuitive API.
+
+## Installation
+
+```bash
+go get github.com/watzon/lining
+```
+
+## Features
+
+- Simple and intuitive API for interacting with Bluesky
+- Rate limiting to prevent API abuse
+- Automatic token refresh
+- Support for rich text posts with mentions, links, and tags
+- Image upload support
+- Follow/unfollow functionality
+- Profile fetching
+- Comprehensive error handling
+- Fully tested with unit tests
+
+## Configuration
+
+The library uses a configuration struct for initialization:
+
+```go
+cfg := config.DefaultConfig().
+    WithHandle("your-handle.bsky.social").
+    WithAPIKey("your-api-key")
+
+client, err := client.NewClient(cfg)
+if err != nil {
+    log.Fatal(err)
+}
+```
+
+Available configuration options:
+- Handle: Your Bluesky handle
+- APIKey: Your API key (create one in Settings -> App Passwords)
+- ServerURL: Bluesky PDS URL (defaults to https://bsky.social)
+- Timeout: HTTP client timeout
+- RetryAttempts: Number of retry attempts for failed requests
+- RequestsPerMinute: Rate limiting configuration
+- Debug: Enable debug logging
 
 ## Usage example
 
 Has to provide:
 
 * a handle -  example bluesky handle: "example.bsky.social"
-* an apikey - is used for authetication and the retrieval of the access token and refresh token. To create a new one: Settings --> App Passwords 
+* an apikey - is used for authentication and the retrieval of the access token and refresh token. To create a new one: Settings -> App Passwords 
 * the server (PDS) - the Bluesky's "PDS Service" is bsky.social. 
 
 ```go
-import 	gobot "github.com/danrusei/gobot-bsky"
+import "github.com/watzon/lining"
 
 func main() {
 
@@ -22,7 +70,7 @@ func main() {
 
 	ctx := context.Background()
 
-	agent := gobot.NewAgent(ctx, server, handle, apikey)
+	agent := lining.NewAgent(ctx, server, handle, apikey)
 	agent.Connect(ctx)
 
 	// Facets Section
@@ -31,9 +79,9 @@ func main() {
 	// based on the selected type it expect the second argument to be URI, DID, or TAG
 	// the last function argument is the text, part of the original text that is modifiend in Richtext
 
-	post1, err := gobot.NewPostBuilder("Hello to Bluesky, the coolest open social network").
-		WithFacet(gobot.Facet_Link, "https://docs.bsky.app/", "Bluesky").
-		WithFacet(gobot.Facet_Tag, "bsky", "open social").
+	post1, err := lining.NewPostBuilder("Hello to Bluesky, the coolest open social network").
+		WithFacet(lining.Facet_Link, "https://docs.bsky.app/", "Bluesky").
+		WithFacet(lining.Facet_Tag, "bsky", "open social").
 		Build()
 	if err != nil {
 		fmt.Printf("Got error: %v", err)
@@ -58,7 +106,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Parse error, %v", err)
 	}
-	previewImage := gobot.Image{
+	previewImage := lining.Image{
 		Title: "Golang",
 		Uri:   *previewUrl,
 	}
@@ -67,7 +115,7 @@ func main() {
 		log.Fatalf("Parse error, %v", err)
 	}
 
-	post2, err := gobot.NewPostBuilder("Hello to Go on Bluesky").
+	post2, err := lining.NewPostBuilder("Hello to Go on Bluesky").
 		WithExternalLink("Go Programming Language", *u, "Build simple, secure, scalable systems with Go", *previewImageBlob).
 		Build()
 	if err != nil {
@@ -83,13 +131,13 @@ func main() {
 
 	// Embed Images section
 	// =======================================
-	images := []gobot.Image{}
+	images := []lining.Image{}
 
 	url1, err := url.Parse("https://www.freecodecamp.org/news/content/images/2021/10/golang.png")
 	if err != nil {
 		log.Fatalf("Parse error, %v", err)
 	}
-	images = append(images, gobot.Image{
+	images = append(images, lining.Image{
 		Title: "Golang",
 		Uri:   *url1,
 	})
@@ -99,7 +147,7 @@ func main() {
 		log.Fatalf("Parse error, %v", err)
 	}
 
-	post3, err := gobot.NewPostBuilder("Gobot-bsky - a simple golang lib to write Bluesky bots").
+	post3, err := lining.NewPostBuilder("Lining - a simple golang lib to write Bluesky bots").
 		WithImages(blobs, images).
 		Build()
 	if err != nil {
@@ -114,11 +162,86 @@ func main() {
 	}
 
 }
+
+## Examples
+
+### Simple Text Post
+
+```go
+ctx := context.Background()
+if err := client.Connect(ctx); err != nil {
+    log.Fatal(err)
+}
+
+post, err := lining.NewPostBuilder("Hello Bluesky!").Build()
+if err != nil {
+    log.Fatal(err)
+}
+
+cid, uri, err := client.PostToFeed(ctx, post)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("Posted successfully: %s\n", uri)
 ```
 
-## The results of running the above code
+### Rich Text Post with Mentions and Tags
 
-![Content generated with gobot-bsky](bsky_bot_in_go.png "Content generated with gobot-bsky")
+```go
+post, err := lining.NewPostBuilder("Check out @someone's #awesome post about #bluesky").
+    WithFacet(lining.Facet_Mention, "did:plc:someone", "@someone").
+    WithFacet(lining.Facet_Tag, "awesome", "#awesome").
+    WithFacet(lining.Facet_Tag, "bluesky", "#bluesky").
+    Build()
+```
 
-You can now embed a preview image to the website url
-![Content generated with gobot-bsky](bsky_bot_preview_link.png "Content generated with gobot-bsky")
+### Post with Image
+
+```go
+imageUrl, _ := url.Parse("https://example.com/image.png")
+image := lining.Image{
+    Title: "My Image",
+    Uri:   *imageUrl,
+}
+
+blob, err := client.UploadImage(ctx, image)
+if err != nil {
+    log.Fatal(err)
+}
+
+post, err := lining.NewPostBuilder("Check out this image!").
+    WithImages([]lexutil.LexBlob{*blob}, []lining.Image{image}).
+    Build()
+```
+
+### Follow a User
+
+```go
+err := client.Follow(ctx, "did:plc:someuser")
+if err != nil {
+    log.Fatal(err)
+}
+```
+
+### Get User Profile
+
+```go
+profile, err := client.GetProfile(ctx, "user.bsky.social")
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("Display Name: %s\n", profile.DisplayName)
+```
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## Acknowledgements
+
+- Thanks to [Dan Rusei](https://github.com/danrusei) for his work on [gobot-bsky](https://github.com/danrusei/gobot-bsky) for providing the inspiration and initial base for this project.
+- Thanks to [bluesky-social](https://github.com/bluesky-social) for providing the Bluesky API documentation and examples.
+
+## License
+
+This project, like the original, is licensed under the Apache License, Version 2.0. For more information, please see the [LICENSE](LICENSE) file.
