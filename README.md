@@ -105,6 +105,7 @@ func main() {
     }
     fmt.Printf("Posted successfully! URI: %s\n", uri)
 }
+```
 
 ## Examples
 
