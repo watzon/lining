@@ -54,7 +54,8 @@ func main() {
 	}
 
 	// Create a post with text and link
-	post, err := client.NewPostBuilder("Check out this link!").
+	post, err := client.NewPostBuilder().
+		AddText("Check out this link!").
 		WithExternalLink(link).
 		Build()
 	if err != nil {
@@ -82,7 +83,8 @@ func main() {
 	}
 
 	// Create a post with the image
-	imagePost, err := client.NewPostBuilder("Check out this image!").
+	imagePost, err := client.NewPostBuilder().
+		AddText("Check out this image!").
 		WithImages([]lexutil.LexBlob{*uploadedBlob}, []models.Image{img}).
 		Build()
 	if err != nil {

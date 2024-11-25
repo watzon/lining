@@ -89,10 +89,11 @@ func main() {
     }
 
     // Create a post with a mention and a tag
-    post, err := client.NewPostBuilder("Hello @watzon! Check out this #bluesky bot!").
-        WithFacet(models.FacetMention, "did:plc:watzon", "@watzon").
-        WithFacet(models.FacetTag, "bluesky", "#bluesky").
-        Build()
+    post, err := client.NewPostBuilder().
+        AddText("Hello ")
+        AddMention("alice", "did:plc:alice").
+        AddTag("golang").
+        Build(
     if err != nil {
         log.Fatal(err)
     }

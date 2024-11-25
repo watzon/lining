@@ -298,7 +298,7 @@ func (c *BskyClient) PostToFeed(ctx context.Context, post appbsky.FeedPost) (str
 	return resp.Cid, resp.Uri, nil
 }
 
-// NewPostBuilder creates a new post builder
-func NewPostBuilder(text string) *post.Builder {
-	return post.NewBuilder(text)
+// NewPostBuilder creates a new post builder with the specified options
+func NewPostBuilder(opts ...post.BuilderOption) *post.Builder {
+	return post.NewBuilder(opts...)
 }

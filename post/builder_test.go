@@ -342,3 +342,194 @@ func TestBuilder(t *testing.T) {
 		})
 	})
 }
+
+func TestBuilderJoinStrategies(t *testing.T) {
+	t.Run("JoinAsIs strategy", func(t *testing.T) {
+		post, err := NewBuilder().
+			AddText("Hello").
+			AddText("world").
+			AddText("!").
+			Build()
+
+		assert.NoError(t, err)
+		assert.Equal(t, "Helloworld!", post.Text)
+	})
+
+	t.Run("JoinWithSpaces strategy", func(t *testing.T) {
+		post, err := NewBuilder(WithJoinStrategy(JoinWithSpaces)).
+			AddText("Hello").
+			AddText("world").
+			AddText("!").
+			Build()
+
+		assert.NoError(t, err)
+		assert.Equal(t, "Hello world !", post.Text)
+	})
+
+	t.Run("JoinWithSpaces with facets", func(t *testing.T) {
+		post, err := NewBuilder(WithJoinStrategy(JoinWithSpaces)).
+			AddText("Hello").
+			AddMention("alice", "did:plc:alice").
+			AddText("!").
+			AddText("Check out").
+			AddLink("this", "https://example.com").
+			Build()
+
+		assert.NoError(t, err)
+		assert.Equal(t, "Hello @alice ! Check out this", post.Text)
+		assert.Len(t, post.Facets, 2)
+	})
+
+	t.Run("JoinWithSpaces with empty segments", func(t *testing.T) {
+		post, err := NewBuilder(WithJoinStrategy(JoinWithSpaces)).
+			AddText("Hello").
+			AddText("").  // Empty segment
+			AddText("world").
+			Build()
+
+		assert.NoError(t, err)
+		assert.Equal(t, "Hello world", post.Text)
+	})
+}
+
+func TestBuilderOptions(t *testing.T) {
+	t.Run("default options", func(t *testing.T) {
+		builder := NewBuilder()
+		assert.Equal(t, JoinAsIs, builder.options.JoinStrategy)
+	})
+
+	t.Run("with join strategy option", func(t *testing.T) {
+		builder := NewBuilder(WithJoinStrategy(JoinWithSpaces))
+		assert.Equal(t, JoinWithSpaces, builder.options.JoinStrategy)
+	})
+
+	t.Run("multiple options (future-proofing)", func(t *testing.T) {
+		// This test ensures our options system can handle multiple options
+		// when we add more in the future
+		builder := NewBuilder(
+			WithJoinStrategy(JoinWithSpaces),
+			// Add more options here as they're added
+		)
+		assert.Equal(t, JoinWithSpaces, builder.options.JoinStrategy)
+	})
+}
+
+func TestBuilderAutoDetection(t *testing.T) {
+	t.Run("auto hashtags", func(t *testing.T) {
+		post, err := NewBuilder(WithAutoHashtag(true)).
+			AddText("Check out #golang and #programming!").
+			Build()
+
+		assert.NoError(t, err)
+		assert.Equal(t, "Check out #golang and #programming!", post.Text)
+		assert.Len(t, post.Facets, 2)
+
+		// Verify hashtags
+		for _, facet := range post.Facets {
+			assert.NotNil(t, facet.Features[0].RichtextFacet_Tag)
+			tag := facet.Features[0].RichtextFacet_Tag.Tag
+			assert.Contains(t, []string{"golang", "programming"}, tag)
+		}
+	})
+
+	t.Run("auto mentions", func(t *testing.T) {
+		post, err := NewBuilder(WithAutoMention(true)).
+			AddText("Hello @alice and @bob!").
+			Build()
+
+		assert.NoError(t, err)
+		assert.Equal(t, "Hello @alice and @bob!", post.Text)
+		assert.Len(t, post.Facets, 2)
+
+		// Verify mentions
+		for _, facet := range post.Facets {
+			assert.NotNil(t, facet.Features[0].RichtextFacet_Mention)
+			did := facet.Features[0].RichtextFacet_Mention.Did
+			assert.Contains(t, []string{"did:plc:alice", "did:plc:bob"}, did)
+		}
+	})
+
+	t.Run("auto links", func(t *testing.T) {
+		post, err := NewBuilder(WithAutoLink(true)).
+			AddText("Check https://example.com and https://test.com").
+			Build()
+
+		assert.NoError(t, err)
+		assert.Equal(t, "Check https://example.com and https://test.com", post.Text)
+		assert.Len(t, post.Facets, 2)
+
+		// Verify links
+		for _, facet := range post.Facets {
+			assert.NotNil(t, facet.Features[0].RichtextFacet_Link)
+			uri := facet.Features[0].RichtextFacet_Link.Uri
+			assert.Contains(t, []string{"https://example.com", "https://test.com"}, uri)
+		}
+	})
+
+	t.Run("all auto features", func(t *testing.T) {
+		post, err := NewBuilder(
+			WithAutoHashtag(true),
+			WithAutoMention(true),
+			WithAutoLink(true),
+		).AddText("Hi @alice! Check #golang at https://golang.org #programming").
+			Build()
+
+		assert.NoError(t, err)
+		assert.Equal(t, "Hi @alice! Check #golang at https://golang.org #programming", post.Text)
+		assert.Len(t, post.Facets, 4) // 1 mention + 2 hashtags + 1 link
+
+		var hashtags, mentions, links int
+		for _, facet := range post.Facets {
+			if facet.Features[0].RichtextFacet_Tag != nil {
+				hashtags++
+			}
+			if facet.Features[0].RichtextFacet_Mention != nil {
+				mentions++
+			}
+			if facet.Features[0].RichtextFacet_Link != nil {
+				links++
+			}
+		}
+
+		assert.Equal(t, 2, hashtags)
+		assert.Equal(t, 1, mentions)
+		assert.Equal(t, 1, links)
+	})
+
+	t.Run("invalid auto-detected items", func(t *testing.T) {
+		post, err := NewBuilder(
+			WithAutoHashtag(true),
+			WithAutoMention(true),
+			WithAutoLink(true),
+		).AddText("@invalid user #invalid tag https://").
+			Build()
+
+		assert.NoError(t, err)
+		assert.Equal(t, "@invalid user #invalid tag https://", post.Text)
+		assert.Empty(t, post.Facets) // All items should be invalid and ignored
+	})
+}
+
+func TestBuilderMaxLength(t *testing.T) {
+	t.Run("custom max length", func(t *testing.T) {
+		builder := NewBuilder(WithMaxLength(10))
+		post, err := builder.AddText("12345").Build()
+		assert.NoError(t, err)
+		assert.Equal(t, "12345", post.Text)
+
+		_, err = builder.AddText("123456").Build()
+		assert.ErrorIs(t, err, ErrPostTooLong)
+	})
+
+	t.Run("invalid max length", func(t *testing.T) {
+		assert.Panics(t, func() {
+			NewBuilder(WithMaxLength(0))
+		})
+		assert.Panics(t, func() {
+			NewBuilder(WithMaxLength(-1))
+		})
+		assert.Panics(t, func() {
+			NewBuilder(WithMaxLength(maxPostLength + 1))
+		})
+	})
+}
