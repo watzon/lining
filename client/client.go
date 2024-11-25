@@ -175,7 +175,7 @@ func (c *BskyClient) Unfollow(ctx context.Context, did string) error {
 		Rkey:       rkey,
 	}
 
-	err = atproto.RepoDeleteRecord(ctx, c.client, input)
+	_, err = atproto.RepoDeleteRecord(ctx, c.client, input)
 	if err != nil {
 		return fmt.Errorf("failed to unfollow user: %w", err)
 	}
