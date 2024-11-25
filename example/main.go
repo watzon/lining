@@ -8,9 +8,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/bluesky-social/indigo/api/bsky"
+	lexutil "github.com/bluesky-social/indigo/lex/util"
 	"github.com/joho/godotenv"
-
 	"github.com/watzon/lining/client"
 	"github.com/watzon/lining/models"
 )
@@ -55,20 +54,11 @@ func main() {
 	}
 
 	// Create a post with text and link
-	post := bsky.FeedPost{
-		Text:          "Check out this link!",
-		LexiconTypeID: "app.bsky.feed.post",
-		CreatedAt:     time.Now().Format(time.RFC3339),
-		Embed: &bsky.FeedPost_Embed{
-			EmbedExternal: &bsky.EmbedExternal{
-				LexiconTypeID: "app.bsky.embed.external",
-				External: &bsky.EmbedExternal_External{
-					Uri:         link.Uri.String(),
-					Title:       link.Title,
-					Description: link.Description,
-				},
-			},
-		},
+	post, err := client.NewPostBuilder("Check out this link!").
+		WithExternalLink(link).
+		Build()
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	// Create the post
@@ -92,21 +82,11 @@ func main() {
 	}
 
 	// Create a post with the image
-	imagePost := bsky.FeedPost{
-		Text:          "Check out this image!",
-		LexiconTypeID: "app.bsky.feed.post",
-		CreatedAt:     time.Now().Format(time.RFC3339),
-		Embed: &bsky.FeedPost_Embed{
-			EmbedImages: &bsky.EmbedImages{
-				LexiconTypeID: "app.bsky.embed.images",
-				Images: []*bsky.EmbedImages_Image{
-					{
-						Alt:   img.Title,
-						Image: uploadedBlob,
-					},
-				},
-			},
-		},
+	imagePost, err := client.NewPostBuilder("Check out this image!").
+		WithImages([]lexutil.LexBlob{*uploadedBlob}, []models.Image{img}).
+		Build()
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	// Create the post with image
