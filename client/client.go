@@ -15,6 +15,7 @@ import (
 	appbsky "github.com/bluesky-social/indigo/api/bsky"
 	lexutil "github.com/bluesky-social/indigo/lex/util"
 	"github.com/bluesky-social/indigo/xrpc"
+	"github.com/gorilla/websocket"
 	"golang.org/x/time/rate"
 
 	"github.com/watzon/lining/models"
@@ -32,6 +33,7 @@ type Client interface {
 	GetProfile(ctx context.Context, handle string) (*appbsky.ActorDefs_ProfileViewDetailed, error)
 	Follow(ctx context.Context, did string) error
 	Unfollow(ctx context.Context, did string) error
+	SubscribeToFirehose(ctx context.Context, callbacks *FirehoseCallbacks) error
 }
 
 // BskyClient implements the Client interface
@@ -40,6 +42,7 @@ type BskyClient struct {
 	client  *xrpc.Client
 	limiter *rate.Limiter
 	mu      sync.RWMutex
+	wsConn  *websocket.Conn
 }
 
 // NewClient creates a new Bluesky client with the given configuration

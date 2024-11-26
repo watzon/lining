@@ -24,6 +24,11 @@ type Config struct {
 	RequestsPerMinute int
 	BurstSize         int
 
+	// Firehose configuration
+	FirehoseURL      string
+	FirehoseReconnectDelay time.Duration
+	FirehoseBufferSize     int
+
 	// Logging
 	Debug bool
 }
@@ -39,6 +44,9 @@ func DefaultConfig() *Config {
 		IdleConnTimeout:   120 * time.Second,
 		RequestsPerMinute: 60,
 		BurstSize:         5,
+		FirehoseURL:       "wss://bsky.network/xrpc/com.atproto.sync.subscribeRepos",
+		FirehoseReconnectDelay: 5 * time.Second,
+		FirehoseBufferSize:     1000,
 		Debug:             false,
 	}
 }
@@ -109,6 +117,24 @@ func (c *Config) WithBurstSize(burstSize int) *Config {
 	return c
 }
 
+// WithFirehoseURL sets the firehose URL and returns the config
+func (c *Config) WithFirehoseURL(url string) *Config {
+	c.FirehoseURL = url
+	return c
+}
+
+// WithFirehoseReconnectDelay sets the firehose reconnect delay and returns the config
+func (c *Config) WithFirehoseReconnectDelay(delay time.Duration) *Config {
+	c.FirehoseReconnectDelay = delay
+	return c
+}
+
+// WithFirehoseBufferSize sets the firehose buffer size and returns the config
+func (c *Config) WithFirehoseBufferSize(size int) *Config {
+	c.FirehoseBufferSize = size
+	return c
+}
+
 // WithDebug sets the debug mode and returns the config
 func (c *Config) WithDebug(debug bool) *Config {
 	c.Debug = debug
@@ -133,6 +159,9 @@ func (c *Config) String() string {
 		"IdleConnTimeout: " + c.IdleConnTimeout.String() + ", " +
 		"RequestsPerMinute: " + strconv.Itoa(c.RequestsPerMinute) + ", " +
 		"BurstSize: " + strconv.Itoa(c.BurstSize) + ", " +
+		"FirehoseURL: " + c.FirehoseURL + ", " +
+		"FirehoseReconnectDelay: " + c.FirehoseReconnectDelay.String() + ", " +
+		"FirehoseBufferSize: " + strconv.Itoa(c.FirehoseBufferSize) + ", " +
 		"Debug: " + debug +
 		"}"
 }

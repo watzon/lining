@@ -181,7 +181,7 @@ func validateMention(username string) error {
 		return ErrInvalidMention
 	}
 	// Check for valid format (letters, numbers, _, -)
-	for _, r := range []rune(username) {
+	for _, r := range username {
 		if !unicode.IsLetter(r) && !unicode.IsNumber(r) && r != '_' && r != '-' {
 			return ErrInvalidMention
 		}
@@ -208,7 +208,7 @@ func validateTag(tag string) error {
 		return ErrInvalidTag
 	}
 	// Check for valid format (letters, numbers, _, -)
-	for _, r := range []rune(tag) {
+	for _, r := range tag {
 		if !unicode.IsLetter(r) && !unicode.IsNumber(r) && r != '_' && r != '-' {
 			return ErrInvalidTag
 		}
