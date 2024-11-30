@@ -2,7 +2,6 @@ package post
 
 import (
 	"errors"
-	"fmt"
 	"net/url"
 	"regexp"
 	"sort"
@@ -241,17 +240,14 @@ func (b *Builder) processText(text string) *Builder {
 	if b.options.AutoLink {
 		for _, m := range urlRegex.FindAllStringIndex(text, -1) {
 			urlStr := text[m[0]:m[1]]
-			fmt.Printf("Found URL match: %q at [%d:%d]\n", urlStr, m[0], m[1])
 			matches = append(matches, match{
 				start: m[0],
 				end:   m[1],
 				process: func(text string) bool {
 					if err := validateURL(urlStr); err == nil {
-						fmt.Printf("URL %q is valid\n", urlStr)
 						b.AddURLLink(urlStr)
 						return true
 					}
-					fmt.Printf("URL %q is invalid\n", urlStr)
 					return false
 				},
 			})
@@ -272,17 +268,14 @@ func (b *Builder) processText(text string) *Builder {
 				tagEnd = i + 1
 			}
 			tag = tag[:tagEnd]
-			fmt.Printf("Found hashtag match: %q (cleaned: %q) at [%d:%d]\n", fullMatch, tag, m[0], m[1])
 			matches = append(matches, match{
 				start: m[0],
 				end:   m[0] + len(tag) + 1, // +1 for the # prefix
 				process: func(text string) bool {
 					if err := validateTag(tag); err == nil {
-						fmt.Printf("Hashtag %q is valid\n", tag)
 						b.AddTag(tag)
 						return true
 					}
-					fmt.Printf("Hashtag %q is invalid\n", tag)
 					return false
 				},
 			})
@@ -303,17 +296,14 @@ func (b *Builder) processText(text string) *Builder {
 				usernameEnd = i + 1
 			}
 			username = username[:usernameEnd]
-			fmt.Printf("Found mention match: %q (cleaned: %q) at [%d:%d]\n", fullMatch, username, m[0], m[1])
 			matches = append(matches, match{
 				start: m[0],
 				end:   m[0] + len(username) + 1, // +1 for the @ prefix
 				process: func(text string) bool {
 					if err := validateMention(username); err == nil {
-						fmt.Printf("Mention %q is valid\n", username)
 						b.AddMention(username, "did:plc:"+username)
 						return true
 					}
-					fmt.Printf("Mention %q is invalid\n", username)
 					return false
 				},
 			})
@@ -334,7 +324,6 @@ func (b *Builder) processText(text string) *Builder {
 				b.err = err
 				return b
 			}
-			fmt.Printf("Adding text before match: %q\n", text[lastEnd:m.start])
 			b.segments = append(b.segments, segment{text: text[lastEnd:m.start]})
 		}
 
@@ -346,7 +335,6 @@ func (b *Builder) processText(text string) *Builder {
 				b.err = err
 				return b
 			}
-			fmt.Printf("Adding failed match as text: %q\n", matchText)
 			b.segments = append(b.segments, segment{text: matchText})
 		}
 
@@ -359,7 +347,6 @@ func (b *Builder) processText(text string) *Builder {
 			b.err = err
 			return b
 		}
-		fmt.Printf("Adding remaining text: %q\n", text[lastEnd:])
 		b.segments = append(b.segments, segment{text: text[lastEnd:]})
 	}
 
@@ -532,15 +519,17 @@ func (b *Builder) WithExternalLink(link models.Link) *Builder {
 // The blobs parameter should contain the already-uploaded image blobs,
 // and the images parameter should contain the corresponding image metadata.
 // Both slices must be the same length.
-func (b *Builder) WithImages(blobs []lexutil.LexBlob, images []models.Image) *Builder {
+func (b *Builder) WithImages(images []models.UploadedImage) *Builder {
 	if b.err != nil {
 		return b
 	}
-	if len(blobs) != len(images) {
-		b.err = ErrMismatchedImages
-		return b
+	blobs := make([]lexutil.LexBlob, len(images))
+	imgs := make([]models.Image, len(images))
+	for i, img := range images {
+		blobs[i] = *img.LexBlob
+		imgs[i] = img.Image
 	}
-	b.embed.Images = images
+	b.embed.Images = imgs
 	b.embed.UploadedImages = blobs
 	return b
 }

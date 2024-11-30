@@ -12,6 +12,11 @@ type Image struct {
 	Data  []byte
 }
 
+type UploadedImage struct {
+	*lexutil.LexBlob
+	Image
+}
+
 // Link represents an external link in a post
 type Link struct {
 	Title       string

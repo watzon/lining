@@ -63,48 +63,48 @@ import (
 
     "github.com/joho/godotenv"
     "github.com/watzon/lining/client"
-    "github.com/watzon/lining/models"
 )
 
 func main() {
-    // Load environment variables from .env file
-    if err := godotenv.Load(); err != nil {
-        log.Fatal(err)
-    }
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
 
-    // Create a new client
-    cfg := client.DefaultConfig().
-        WithHandle(os.Getenv("HANDLE")).
-        WithAPIKey(os.Getenv("APIKEY"))
+	// Create a new client
+	cfg := client.DefaultConfig().
+		WithHandle(os.Getenv("HANDLE")).
+		WithAPIKey(os.Getenv("APIKEY"))
 
-    client, err := client.NewClient(cfg)
-    if err != nil {
-        log.Fatal(err)
-    }
+	cli, err := client.NewClient(cfg)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-    // Connect to Bluesky
-    ctx := context.Background()
-    if err := client.Connect(ctx); err != nil {
-        log.Fatal(err)
-    }
+	// Connect to Bluesky
+	ctx := context.Background()
+	if err := cli.Connect(ctx); err != nil {
+		log.Fatal(err)
+	}
 
-    // Create a post with a mention and a tag
-    post, err := client.NewPostBuilder().
-        AddText("Hello ")
-        AddMention("alice", "did:plc:alice").
-        AddTag("golang").
-        Build(
-    if err != nil {
-        log.Fatal(err)
-    }
+	// Create a post with a mention and a tag
+	p, err := client.NewPostBuilder().
+		AddText("Hello ").
+		AddMention("alice", "did:plc:alice").
+		AddTag("golang").
+		Build()
+	if err != nil {
+		log.Fatal(err)
+	}
 
-    // Post to your feed
-    cid, uri, err := client.PostToFeed(ctx, post)
-    if err != nil {
-        log.Fatal(err)
-    }
-    fmt.Printf("Posted successfully! URI: %s\n", uri)
+	// Post to your feed
+	_, uri, err := cli.PostToFeed(ctx, p)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("Posted successfully! URI: %s\n", uri)
 }
+
 ```
 
 ## Examples
@@ -128,9 +128,9 @@ fmt.Printf("Posted successfully: %s\n", uri)
 
 ```go
 post, err := client.NewPostBuilder("Check out @someone's link to docs.bsky.app #bluesky").
-    WithFacet(models.FacetMention, "did:plc:someone", "@someone").
-    WithFacet(models.FacetLink, "https://docs.bsky.app", "docs.bsky.app").
-    WithFacet(models.FacetTag, "bluesky", "#bluesky").
+    AddMention("did:plc:someone", "@someone").
+    AddLink("https://docs.bsky.app", "docs.bsky.app").
+    AddTag("bluesky").
     Build()
 ```
 
@@ -150,13 +150,13 @@ image := models.Image{
     Data:  imageData,
 }
 
-blob, err := client.UploadImage(ctx, image)
+uploadedImage, err := client.UploadImage(ctx, image)
 if err != nil {
     log.Fatal(err)
 }
 
 post, err := client.NewPostBuilder("Check out this image!").
-    WithImages([]models.Image{image}, []blob.Blob{*blob}).
+    WithImages([]models.UploadedImage{*uploadedImage}).
     Build()
 ```
 
@@ -164,17 +164,13 @@ post, err := client.NewPostBuilder("Check out this image!").
 
 ```go
 // Upload directly from a URL - no need to create Image struct
-blob, err := client.UploadImageFromURL(ctx, "https://example.com/image.jpg", "Cool Image From URL")
+uploadedImage, err := client.UploadImageFromURL(ctx, "https://example.com/image.jpg", "Cool Image From URL")
 if err != nil {
     log.Fatal(err)
 }
 
-image := models.Image{
-    Title: "Cool Image From URL",
-}
-
 post, err := client.NewPostBuilder("Check out this image I found!").
-    WithImages([]models.Image{image}, []blob.Blob{*blob}).
+    WithImages([]models.Image{*uploadedImage}).
     Build()
 ```
 
@@ -182,17 +178,13 @@ post, err := client.NewPostBuilder("Check out this image I found!").
 
 ```go
 // Upload from a local file - no need to handle the bytes manually
-blob, err := client.UploadImageFromFile(ctx, "/path/to/local/image.jpg", "My Local Image")
+uploadedImage, err := client.UploadImageFromFile(ctx, "/path/to/local/image.jpg", "My Local Image")
 if err != nil {
     log.Fatal(err)
 }
 
-image := models.Image{
-    Title: "My Local Image",
-}
-
-post, err := client.NewPostBuilder("Just took this photo!").
-    WithImages([]models.Image{image}, []blob.Blob{*blob}).
+post, err := client.NewPostBuilder("Check out my local image!").
+    WithImages([]models.Image{*uploadedImage}).
     Build()
 ```
 
@@ -200,9 +192,9 @@ post, err := client.NewPostBuilder("Just took this photo!").
 
 ```go
 post, err := client.NewPostBuilder("Check out @someone's link to docs.bsky.app #bluesky").
-    WithFacet(models.FacetMention, "did:plc:someone", "@someone").
-    WithFacet(models.FacetLink, "https://docs.bsky.app", "docs.bsky.app").
-    WithFacet(models.FacetTag, "bluesky", "#bluesky").
+    AddMention("did:plc:someone", "@someone").
+    AddLink("https://docs.bsky.app", "docs.bsky.app").
+    AddTag("bluesky").
     Build()
 ```
 

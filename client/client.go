@@ -187,7 +187,7 @@ func (c *BskyClient) Unfollow(ctx context.Context, did string) error {
 }
 
 // UploadImage uploads an image to Bluesky
-func (c *BskyClient) UploadImage(ctx context.Context, image models.Image) (*lexutil.LexBlob, error) {
+func (c *BskyClient) UploadImage(ctx context.Context, image models.Image) (*models.UploadedImage, error) {
 	if err := c.limiter.Wait(ctx); err != nil {
 		return nil, fmt.Errorf("rate limit exceeded: %w", err)
 	}
@@ -197,17 +197,20 @@ func (c *BskyClient) UploadImage(ctx context.Context, image models.Image) (*lexu
 		return nil, fmt.Errorf("failed to upload blob: %w", err)
 	}
 
-	blob := &lexutil.LexBlob{
-		Ref:      resp.Blob.Ref,
-		MimeType: resp.Blob.MimeType,
-		Size:     resp.Blob.Size,
+	uploaded := &models.UploadedImage{
+		LexBlob: &lexutil.LexBlob{
+			Ref:      resp.Blob.Ref,
+			MimeType: resp.Blob.MimeType,
+			Size:     resp.Blob.Size,
+		},
+		Image: image,
 	}
 
-	return blob, nil
+	return uploaded, nil
 }
 
 // UploadImageFromURL uploads an image from a URL to Bluesky
-func (c *BskyClient) UploadImageFromURL(ctx context.Context, title string, imageURL string) (*lexutil.LexBlob, error) {
+func (c *BskyClient) UploadImageFromURL(ctx context.Context, title string, imageURL string) (*models.UploadedImage, error) {
 	// Create a client with reasonable timeouts
 	client := &http.Client{
 		Timeout: 30 * time.Second,
@@ -238,7 +241,7 @@ func (c *BskyClient) UploadImageFromURL(ctx context.Context, title string, image
 }
 
 // UploadImageFromFile uploads an image from a local file to Bluesky
-func (c *BskyClient) UploadImageFromFile(ctx context.Context, title string, filePath string) (*lexutil.LexBlob, error) {
+func (c *BskyClient) UploadImageFromFile(ctx context.Context, title string, filePath string) (*models.UploadedImage, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file: %w", err)
@@ -251,21 +254,21 @@ func (c *BskyClient) UploadImageFromFile(ctx context.Context, title string, file
 }
 
 // UploadImages uploads multiple images to Bluesky
-func (c *BskyClient) UploadImages(ctx context.Context, images ...models.Image) ([]lexutil.LexBlob, error) {
+func (c *BskyClient) UploadImages(ctx context.Context, images ...models.Image) ([]*models.UploadedImage, error) {
 	if err := c.limiter.Wait(ctx); err != nil {
 		return nil, fmt.Errorf("rate limit exceeded: %w", err)
 	}
 
-	var blobs []lexutil.LexBlob
+	var uploads []*models.UploadedImage
 	for _, img := range images {
 		blob, err := c.UploadImage(ctx, img)
 		if err != nil {
 			return nil, fmt.Errorf("failed to upload image %s: %w", img.Title, err)
 		}
-		blobs = append(blobs, *blob)
+		uploads = append(uploads, blob)
 	}
 
-	return blobs, nil
+	return uploads, nil
 }
 
 // PostToFeed creates a new post in the user's feed

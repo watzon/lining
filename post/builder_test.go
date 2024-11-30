@@ -3,7 +3,6 @@ package post
 import (
 	"testing"
 
-	lexutil "github.com/bluesky-social/indigo/lex/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/watzon/lining/models"
 )
@@ -320,7 +319,7 @@ func TestBuilder(t *testing.T) {
 
 		t.Run("mismatched images", func(t *testing.T) {
 			post, err := NewBuilder().
-				WithImages([]lexutil.LexBlob{{}}, []models.Image{}).
+				WithImages([]models.UploadedImage{}).
 				Build()
 
 			assert.Error(t, err)
@@ -383,7 +382,7 @@ func TestBuilderJoinStrategies(t *testing.T) {
 	t.Run("JoinWithSpaces with empty segments", func(t *testing.T) {
 		post, err := NewBuilder(WithJoinStrategy(JoinWithSpaces)).
 			AddText("Hello").
-			AddText("").  // Empty segment
+			AddText(""). // Empty segment
 			AddText("world").
 			Build()
 

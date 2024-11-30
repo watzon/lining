@@ -8,7 +8,6 @@ import (
 	"os"
 	"time"
 
-	lexutil "github.com/bluesky-social/indigo/lex/util"
 	"github.com/joho/godotenv"
 	"github.com/watzon/lining/client"
 	"github.com/watzon/lining/models"
@@ -77,7 +76,7 @@ func main() {
 	}
 
 	// Upload the image
-	uploadedBlob, err := c.UploadImage(context.Background(), img)
+	uploadedImage, err := c.UploadImage(context.Background(), img)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -85,7 +84,7 @@ func main() {
 	// Create a post with the image
 	imagePost, err := client.NewPostBuilder().
 		AddText("Check out this image!").
-		WithImages([]lexutil.LexBlob{*uploadedBlob}, []models.Image{img}).
+		WithImages([]models.UploadedImage{*uploadedImage}).
 		Build()
 	if err != nil {
 		log.Fatal(err)
