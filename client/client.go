@@ -25,6 +25,7 @@ import (
 // Client interface defines the methods that a Bluesky client must implement
 type Client interface {
 	Connect(ctx context.Context) error
+	RefreshSession(ctx context.Context) error
 	PostToFeed(ctx context.Context, post appbsky.FeedPost) (string, string, error)
 	UploadImage(ctx context.Context, image models.Image) (*lexutil.LexBlob, error)
 	UploadImageFromURL(ctx context.Context, title string, imageURL string) (*lexutil.LexBlob, error)
@@ -106,10 +107,59 @@ func (c *BskyClient) Connect(ctx context.Context) error {
 	return nil
 }
 
+// RefreshSession refreshes the access token using the refresh token
+func (c *BskyClient) RefreshSession(ctx context.Context) error {
+	c.mu.RLock()
+	refreshJwt := c.client.Auth.RefreshJwt
+	c.mu.RUnlock()
+
+	if refreshJwt == "" {
+		return fmt.Errorf("no refresh token available")
+	}
+
+	if err := c.limiter.Wait(ctx); err != nil {
+		return fmt.Errorf("rate limit exceeded: %w", err)
+	}
+
+	session, err := atproto.ServerRefreshSession(ctx, c.client)
+	if err != nil {
+		return fmt.Errorf("failed to refresh session: %w", err)
+	}
+
+	c.mu.Lock()
+	c.client.Auth = &xrpc.AuthInfo{
+		AccessJwt:  session.AccessJwt,
+		RefreshJwt: session.RefreshJwt,
+		Handle:     session.Handle,
+		Did:        session.Did,
+	}
+	c.mu.Unlock()
+
+	return nil
+}
+
+// ensureValidSession checks if the current session needs refresh and refreshes if necessary
+func (c *BskyClient) ensureValidSession(ctx context.Context) error {
+	c.mu.RLock()
+	hasAuth := c.client.Auth != nil && c.client.Auth.AccessJwt != ""
+	c.mu.RUnlock()
+
+	if !hasAuth {
+		return c.Connect(ctx)
+	}
+
+	// Try the refresh. If it fails, we'll attempt a full reconnect
+	if err := c.RefreshSession(ctx); err != nil {
+		return c.Connect(ctx)
+	}
+
+	return nil
+}
+
 // GetProfile fetches a user's profile
 func (c *BskyClient) GetProfile(ctx context.Context, handle string) (*appbsky.ActorDefs_ProfileViewDetailed, error) {
-	if err := c.limiter.Wait(ctx); err != nil {
-		return nil, fmt.Errorf("rate limit exceeded: %w", err)
+	if err := c.ensureValidSession(ctx); err != nil {
+		return nil, err
 	}
 
 	profile, err := appbsky.ActorGetProfile(ctx, c.client, handle)
@@ -122,8 +172,8 @@ func (c *BskyClient) GetProfile(ctx context.Context, handle string) (*appbsky.Ac
 
 // Follow follows a user by their DID
 func (c *BskyClient) Follow(ctx context.Context, did string) error {
-	if err := c.limiter.Wait(ctx); err != nil {
-		return fmt.Errorf("rate limit exceeded: %w", err)
+	if err := c.ensureValidSession(ctx); err != nil {
+		return err
 	}
 
 	follow := &appbsky.GraphFollow{
@@ -148,8 +198,8 @@ func (c *BskyClient) Follow(ctx context.Context, did string) error {
 
 // Unfollow unfollows a user by their DID
 func (c *BskyClient) Unfollow(ctx context.Context, did string) error {
-	if err := c.limiter.Wait(ctx); err != nil {
-		return fmt.Errorf("rate limit exceeded: %w", err)
+	if err := c.ensureValidSession(ctx); err != nil {
+		return err
 	}
 
 	// First, find the follow record
@@ -188,8 +238,8 @@ func (c *BskyClient) Unfollow(ctx context.Context, did string) error {
 
 // UploadImage uploads an image to Bluesky
 func (c *BskyClient) UploadImage(ctx context.Context, image models.Image) (*models.UploadedImage, error) {
-	if err := c.limiter.Wait(ctx); err != nil {
-		return nil, fmt.Errorf("rate limit exceeded: %w", err)
+	if err := c.ensureValidSession(ctx); err != nil {
+		return nil, err
 	}
 
 	resp, err := atproto.RepoUploadBlob(ctx, c.client, bytes.NewReader(image.Data))
@@ -255,8 +305,8 @@ func (c *BskyClient) UploadImageFromFile(ctx context.Context, title string, file
 
 // UploadImages uploads multiple images to Bluesky
 func (c *BskyClient) UploadImages(ctx context.Context, images ...models.Image) ([]*models.UploadedImage, error) {
-	if err := c.limiter.Wait(ctx); err != nil {
-		return nil, fmt.Errorf("rate limit exceeded: %w", err)
+	if err := c.ensureValidSession(ctx); err != nil {
+		return nil, err
 	}
 
 	var uploads []*models.UploadedImage
@@ -273,8 +323,8 @@ func (c *BskyClient) UploadImages(ctx context.Context, images ...models.Image) (
 
 // PostToFeed creates a new post in the user's feed
 func (c *BskyClient) PostToFeed(ctx context.Context, post appbsky.FeedPost) (string, string, error) {
-	if err := c.limiter.Wait(ctx); err != nil {
-		return "", "", fmt.Errorf("rate limit exceeded: %w", err)
+	if err := c.ensureValidSession(ctx); err != nil {
+		return "", "", err
 	}
 
 	c.mu.RLock()
