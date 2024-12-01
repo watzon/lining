@@ -22,6 +22,3 @@ go.work
 
 # env file
 .env
-
-# Test main.go file
-main.go
