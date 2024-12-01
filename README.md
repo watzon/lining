@@ -23,8 +23,8 @@ go get github.com/watzon/lining
 - Image upload support
 - Follow/unfollow functionality
 - Profile fetching
+- Full firehose support, as well as support for an enhanced API
 - Comprehensive error handling
-- Fully tested with unit tests
 
 ## Configuration
 

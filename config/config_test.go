@@ -1,4 +1,4 @@
-package client
+package config
 
 import (
 	"testing"
@@ -8,7 +8,7 @@ import (
 )
 
 func TestDefaultConfig(t *testing.T) {
-	cfg := DefaultConfig()
+	cfg := Default()
 	assert.Equal(t, "https://bsky.social", cfg.ServerURL)
 	assert.Equal(t, 30*time.Second, cfg.Timeout)
 	assert.Equal(t, 3, cfg.RetryAttempts)
@@ -21,15 +21,15 @@ func TestDefaultConfig(t *testing.T) {
 }
 
 func TestConfigChaining(t *testing.T) {
-	cfg := DefaultConfig().
+	cfg := Default().
 		WithHandle("test.bsky.social").
 		WithServerURL("https://example.com").
 		WithUserAgent("TestBot/1.0").
-		WithTimeout(60*time.Second).
+		WithTimeout(60 * time.Second).
 		WithRetryAttempts(5).
-		WithRetryWaitTime(2*time.Second).
+		WithRetryWaitTime(2 * time.Second).
 		WithMaxIdleConns(20).
-		WithIdleConnTimeout(240*time.Second).
+		WithIdleConnTimeout(240 * time.Second).
 		WithRequestsPerMinute(120).
 		WithBurstSize(10).
 		WithDebug(true)
@@ -48,7 +48,7 @@ func TestConfigChaining(t *testing.T) {
 }
 
 func TestConfigString(t *testing.T) {
-	cfg := DefaultConfig().
+	cfg := Default().
 		WithHandle("test.bsky.social").
 		WithServerURL("https://example.com").
 		WithUserAgent("TestBot/1.0")

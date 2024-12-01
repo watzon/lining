@@ -10,6 +10,7 @@ import (
 
 	"github.com/joho/godotenv"
 	"github.com/watzon/lining/client"
+	"github.com/watzon/lining/config"
 	"github.com/watzon/lining/models"
 )
 
@@ -19,7 +20,7 @@ func main() {
 	apikey := os.Getenv("APIKEY")
 	server := "https://bsky.social"
 
-	cfg := &client.Config{
+	cfg := &config.Config{
 		Handle:            handle,
 		APIKey:            apikey,
 		ServerURL:         server,

@@ -1,9 +1,10 @@
-package client
+package firehose
 
 import (
 	"context"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/bluesky-social/indigo/api/atproto"
@@ -12,85 +13,51 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// RepoOperation represents an operation on a repository
-type RepoOperation struct {
-	Action string // create, update, delete
-	Path   string // record path
+// AuthProvider defines the minimal interface needed for firehose authentication
+type AuthProvider interface {
+	GetAccessToken() string
+	GetFirehoseURL() string
+	GetTimeout() time.Duration
 }
 
-// CommitEvent represents a commit to a repository
-type CommitEvent struct {
-	Repo string          // repository DID
-	Time string          // timestamp
-	Ops  []RepoOperation // operations performed
+// Firehose manages the connection to the Bluesky firehose
+type Firehose struct {
+	auth   AuthProvider
+	wsConn *websocket.Conn
+	mu     sync.RWMutex
 }
 
-// HandleEvent represents a handle change event
-type HandleEvent struct {
-	Did    string // DID of the account
-	Handle string // new handle
+// NewFirehose creates a new Firehose instance
+func NewFirehose(auth AuthProvider) *Firehose {
+	return &Firehose{
+		auth: auth,
+	}
 }
 
-// InfoEvent represents repository information
-type InfoEvent struct {
-	Name    string // name of the event
-	Message string // info message, may be empty
-}
-
-// MigrateEvent represents a repository migration
-type MigrateEvent struct {
-	Did       string // DID being migrated
-	MigrateTo string // destination, may be empty
-}
-
-// TombstoneEvent represents a repository being tombstoned
-type TombstoneEvent struct {
-	Did  string // DID being tombstoned
-	Time string // when it was tombstoned
-}
-
-// FirehoseCallbacks defines callbacks for different firehose events
-type FirehoseCallbacks struct {
-	// OnCommit is called when a repository commit occurs
-	OnCommit func(evt *CommitEvent) error
-
-	// OnHandle is called when a handle change occurs
-	OnHandle func(evt *HandleEvent) error
-
-	// OnInfo is called when repository information is received
-	OnInfo func(evt *InfoEvent) error
-
-	// OnMigrate is called when a repository migration occurs
-	OnMigrate func(evt *MigrateEvent) error
-
-	// OnTombstone is called when a repository is tombstoned
-	OnTombstone func(evt *TombstoneEvent) error
-}
-
-// SubscribeToFirehose subscribes to the Bluesky firehose
-func (c *BskyClient) SubscribeToFirehose(ctx context.Context, callbacks *FirehoseCallbacks) error {
+// Subscribe subscribes to the Bluesky firehose
+func (f *Firehose) Subscribe(ctx context.Context, callbacks *FirehoseCallbacks) error {
 	if callbacks == nil {
 		return fmt.Errorf("callbacks cannot be nil")
 	}
 
 	// Create WebSocket connection
 	dialer := websocket.Dialer{
-		HandshakeTimeout: c.cfg.Timeout,
+		HandshakeTimeout: f.auth.GetTimeout(),
 	}
 
 	headers := http.Header{}
-	if c.client.Auth != nil {
-		headers.Set("Authorization", "Bearer "+c.client.Auth.AccessJwt)
+	if token := f.auth.GetAccessToken(); token != "" {
+		headers.Set("Authorization", "Bearer "+token)
 	}
 
-	conn, _, err := dialer.DialContext(ctx, c.cfg.FirehoseURL, headers)
+	conn, _, err := dialer.DialContext(ctx, f.auth.GetFirehoseURL(), headers)
 	if err != nil {
 		return fmt.Errorf("failed to connect to firehose: %w", err)
 	}
 
-	c.mu.Lock()
-	c.wsConn = conn
-	c.mu.Unlock()
+	f.mu.Lock()
+	f.wsConn = conn
+	f.mu.Unlock()
 
 	// Create repo stream callbacks that convert Indigo types to our types
 	rsc := &events.RepoStreamCallbacks{
@@ -101,9 +68,15 @@ func (c *BskyClient) SubscribeToFirehose(ctx context.Context, callbacks *Firehos
 
 			ops := make([]RepoOperation, len(evt.Ops))
 			for i, op := range evt.Ops {
+				cid := ""
+				if op.Cid != nil {
+					cid = op.Cid.String()
+				}
 				ops[i] = RepoOperation{
 					Action: op.Action,
 					Path:   op.Path,
+					Cid:    cid,
+					Blocks: evt.Blocks,
 				}
 			}
 
@@ -165,12 +138,12 @@ func (c *BskyClient) SubscribeToFirehose(ctx context.Context, callbacks *Firehos
 	// Start handling the repo stream
 	go func() {
 		if err := events.HandleRepoStream(ctx, conn, sched); err != nil {
-			if c.cfg.Debug {
+			if true {
 				fmt.Printf("firehose error: %v\n", err)
 			}
 			// Attempt to reconnect after delay
-			time.Sleep(c.cfg.FirehoseReconnectDelay)
-			if err := c.SubscribeToFirehose(ctx, callbacks); err != nil && c.cfg.Debug {
+			time.Sleep(5 * time.Second)
+			if err := f.Subscribe(ctx, callbacks); err != nil && true {
 				fmt.Printf("reconnection failed: %v\n", err)
 			}
 		}
@@ -179,15 +152,21 @@ func (c *BskyClient) SubscribeToFirehose(ctx context.Context, callbacks *Firehos
 	return nil
 }
 
-// CloseFirehose closes the firehose connection
-func (c *BskyClient) CloseFirehose() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+// Close closes the firehose connection
+func (f *Firehose) Close() error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 
-	if c.wsConn != nil {
-		err := c.wsConn.Close()
-		c.wsConn = nil
+	if f.wsConn != nil {
+		err := f.wsConn.Close()
+		f.wsConn = nil
 		return err
 	}
 	return nil
+}
+
+// Deprecated: Use Firehose.Subscribe instead
+func SubscribeToFirehose(ctx context.Context, auth AuthProvider, callbacks *FirehoseCallbacks) error {
+	f := NewFirehose(auth)
+	return f.Subscribe(ctx, callbacks)
 }

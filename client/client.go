@@ -1,3 +1,6 @@
+// Package client provides a high-level interface to interact with the Bluesky social network.
+// It handles authentication, rate limiting, and provides methods for common operations
+// like posting, retrieving posts, and managing the firehose subscription.
 package client
 
 import (
@@ -13,43 +16,44 @@ import (
 
 	"github.com/bluesky-social/indigo/api/atproto"
 	appbsky "github.com/bluesky-social/indigo/api/bsky"
+	"github.com/bluesky-social/indigo/atproto/identity"
 	lexutil "github.com/bluesky-social/indigo/lex/util"
 	"github.com/bluesky-social/indigo/xrpc"
-	"github.com/gorilla/websocket"
 	"golang.org/x/time/rate"
 
+	"github.com/watzon/lining/config"
+	"github.com/watzon/lining/firehose"
 	"github.com/watzon/lining/models"
 	"github.com/watzon/lining/post"
 )
 
-// Client interface defines the methods that a Bluesky client must implement
-type Client interface {
-	Connect(ctx context.Context) error
-	RefreshSession(ctx context.Context) error
-	PostToFeed(ctx context.Context, post appbsky.FeedPost) (string, string, error)
-	UploadImage(ctx context.Context, image models.Image) (*lexutil.LexBlob, error)
-	UploadImageFromURL(ctx context.Context, title string, imageURL string) (*lexutil.LexBlob, error)
-	UploadImageFromFile(ctx context.Context, title string, filePath string) (*lexutil.LexBlob, error)
-	UploadImages(ctx context.Context, images ...models.Image) ([]lexutil.LexBlob, error)
-	GetProfile(ctx context.Context, handle string) (*appbsky.ActorDefs_ProfileViewDetailed, error)
-	Follow(ctx context.Context, did string) error
-	Unfollow(ctx context.Context, did string) error
-	SubscribeToFirehose(ctx context.Context, callbacks *FirehoseCallbacks) error
-}
-
-// BskyClient implements the Client interface
+// BskyClient implements the main interface for interacting with Bluesky.
+// It handles authentication, rate limiting, and provides methods for all
+// supported Bluesky operations.
 type BskyClient struct {
-	cfg     *Config
-	client  *xrpc.Client
-	limiter *rate.Limiter
-	mu      sync.RWMutex
-	wsConn  *websocket.Conn
+	cfg      *config.Config
+	client   *xrpc.Client
+	limiter  *rate.Limiter
+	mu       sync.RWMutex
+	cache    *identity.CacheDirectory
+	firehose *firehose.EnhancedFirehose
 }
 
-// NewClient creates a new Bluesky client with the given configuration
-func NewClient(cfg *Config) (*BskyClient, error) {
+// NewClient creates a new Bluesky client with the given configuration.
+// The configuration must include at minimum a Handle and APIKey.
+// If no configuration is provided, default values will be used.
+//
+// Example:
+//
+//	cfg := &config.Config{
+//	    Handle: "user.bsky.social",
+//	    APIKey: "your-api-key",
+//	    ServerURL: "https://bsky.social",
+//	}
+//	client, err := NewClient(cfg)
+func NewClient(cfg *config.Config) (*BskyClient, error) {
 	if cfg == nil {
-		cfg = DefaultConfig()
+		cfg = config.Default()
 	}
 
 	// Validate config
@@ -69,17 +73,26 @@ func NewClient(cfg *Config) (*BskyClient, error) {
 		},
 	}
 
-	return &BskyClient{
-		cfg: cfg,
-		client: &xrpc.Client{
-			Client: httpClient,
-			Host:   cfg.ServerURL,
-		},
+	client := &BskyClient{
+		cfg:     cfg,
+		client:  &xrpc.Client{Client: httpClient, Host: cfg.ServerURL},
 		limiter: limiter,
-	}, nil
+		cache:   newIdentityCache(),
+	}
+
+	return client, nil
 }
 
-// Connect authenticates with the Bluesky server
+// Connect establishes a connection to the Bluesky network and authenticates the user.
+// This must be called before using any other methods that require authentication.
+// The context can be used to cancel the connection attempt.
+//
+// Example:
+//
+//	ctx := context.Background()
+//	if err := client.Connect(ctx); err != nil {
+//	    log.Fatal("Failed to connect:", err)
+//	}
 func (c *BskyClient) Connect(ctx context.Context) error {
 	if err := c.limiter.Wait(ctx); err != nil {
 		return fmt.Errorf("rate limit exceeded: %w", err)
@@ -107,7 +120,30 @@ func (c *BskyClient) Connect(ctx context.Context) error {
 	return nil
 }
 
-// RefreshSession refreshes the access token using the refresh token
+// ensureValidSession checks if the current session is valid and refreshes it if necessary.
+// This is called automatically by methods that require authentication.
+func (c *BskyClient) ensureValidSession(ctx context.Context) error {
+	c.mu.RLock()
+	hasAuth := c.client.Auth != nil && c.client.Auth.AccessJwt != ""
+	c.mu.RUnlock()
+
+	if !hasAuth {
+		return c.Connect(ctx)
+	}
+
+	// Try the refresh. If it fails, we'll attempt a full reconnect
+	if err := c.RefreshSession(ctx); err != nil {
+		return c.Connect(ctx)
+	}
+
+	return nil
+}
+
+// RefreshSession refreshes the access token using the refresh token.
+// This is called automatically by ensureValidSession when needed, but
+// you can call it manually if you want to force a refresh.
+//
+// Returns an error if the refresh fails or if there is no valid refresh token.
 func (c *BskyClient) RefreshSession(ctx context.Context) error {
 	c.mu.RLock()
 	refreshJwt := c.client.Auth.RefreshJwt
@@ -134,24 +170,6 @@ func (c *BskyClient) RefreshSession(ctx context.Context) error {
 		Did:        session.Did,
 	}
 	c.mu.Unlock()
-
-	return nil
-}
-
-// ensureValidSession checks if the current session needs refresh and refreshes if necessary
-func (c *BskyClient) ensureValidSession(ctx context.Context) error {
-	c.mu.RLock()
-	hasAuth := c.client.Auth != nil && c.client.Auth.AccessJwt != ""
-	c.mu.RUnlock()
-
-	if !hasAuth {
-		return c.Connect(ctx)
-	}
-
-	// Try the refresh. If it fails, we'll attempt a full reconnect
-	if err := c.RefreshSession(ctx); err != nil {
-		return c.Connect(ctx)
-	}
 
 	return nil
 }
@@ -236,7 +254,19 @@ func (c *BskyClient) Unfollow(ctx context.Context, did string) error {
 	return nil
 }
 
-// UploadImage uploads an image to Bluesky
+// UploadImage uploads an image to Bluesky. The image data should be provided in the
+// Image struct, which includes the raw bytes and metadata like title.
+//
+// The returned UploadedImage contains the blob reference needed for including
+// the image in posts.
+//
+// Example:
+//
+//	img := models.Image{
+//	    Title: "My Photo",
+//	    Data:  imageBytes,
+//	}
+//	uploaded, err := client.UploadImage(ctx, img)
 func (c *BskyClient) UploadImage(ctx context.Context, image models.Image) (*models.UploadedImage, error) {
 	if err := c.ensureValidSession(ctx); err != nil {
 		return nil, err
@@ -259,7 +289,14 @@ func (c *BskyClient) UploadImage(ctx context.Context, image models.Image) (*mode
 	return uploaded, nil
 }
 
-// UploadImageFromURL uploads an image from a URL to Bluesky
+// UploadImageFromURL downloads an image from the given URL and uploads it to Bluesky.
+// This is a convenience method that handles both downloading and uploading.
+//
+// The title parameter will be used as the alt text for the image.
+//
+// Example:
+//
+//	uploaded, err := client.UploadImageFromURL(ctx, "My Photo", "https://example.com/photo.jpg")
 func (c *BskyClient) UploadImageFromURL(ctx context.Context, title string, imageURL string) (*models.UploadedImage, error) {
 	// Create a client with reasonable timeouts
 	client := &http.Client{
@@ -290,7 +327,14 @@ func (c *BskyClient) UploadImageFromURL(ctx context.Context, title string, image
 	})
 }
 
-// UploadImageFromFile uploads an image from a local file to Bluesky
+// UploadImageFromFile reads an image from the local filesystem and uploads it to Bluesky.
+// This is a convenience method that handles both reading and uploading.
+//
+// The title parameter will be used as the alt text for the image.
+//
+// Example:
+//
+//	uploaded, err := client.UploadImageFromFile(ctx, "My Photo", "/path/to/photo.jpg")
 func (c *BskyClient) UploadImageFromFile(ctx context.Context, title string, filePath string) (*models.UploadedImage, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
@@ -321,7 +365,19 @@ func (c *BskyClient) UploadImages(ctx context.Context, images ...models.Image) (
 	return uploads, nil
 }
 
-// PostToFeed creates a new post in the user's feed
+// PostToFeed creates a new post in the user's feed. The post parameter should be a
+// fully constructed FeedPost object, which you can create using the post.Builder.
+//
+// Returns the CID (Content Identifier) and URI of the created post.
+//
+// Example:
+//
+//	post, _ := post.NewBuilder().
+//	    AddText("Hello, Bluesky!").
+//	    WithImages([]models.UploadedImage{*uploadedImage}).
+//	    Build()
+//
+//	cid, uri, err := client.PostToFeed(ctx, post)
 func (c *BskyClient) PostToFeed(ctx context.Context, post appbsky.FeedPost) (string, string, error) {
 	if err := c.ensureValidSession(ctx); err != nil {
 		return "", "", err
@@ -363,4 +419,100 @@ func (c *BskyClient) PostToFeed(ctx context.Context, post appbsky.FeedPost) (str
 // NewPostBuilder creates a new post builder with the specified options
 func NewPostBuilder(opts ...post.BuilderOption) *post.Builder {
 	return post.NewBuilder(opts...)
+}
+
+// GetAccessToken returns the current access token
+func (c *BskyClient) GetAccessToken() string {
+	if c.client != nil && c.client.Auth != nil {
+		return c.client.Auth.AccessJwt
+	}
+	return ""
+}
+
+// GetFirehoseURL returns the configured firehose URL
+func (c *BskyClient) GetFirehoseURL() string {
+	return c.cfg.FirehoseURL
+}
+
+// GetTimeout returns the configured timeout duration for API requests.
+// This is used internally by the firehose and other long-running operations.
+func (c *BskyClient) GetTimeout() time.Duration {
+	return c.cfg.Timeout
+}
+
+// SubscribeToFirehose connects to the Bluesky firehose and starts processing events
+// using the provided callbacks. The firehose provides a real-time stream of all
+// public activities on the network.
+//
+// The callbacks parameter should define handlers for the types of events you're
+// interested in (posts, likes, follows, etc.).
+//
+// Example:
+//
+//	callbacks := &firehose.EnhancedFirehoseCallbacks{
+//	    PostHandlers: []*firehose.OnPostHandler{
+//	        {
+//	            Filters: []firehose.PostFilter{
+//	                func(post *post.Post) bool {
+//	                    return len(post.Embed.Images) > 0
+//	                },
+//	            },
+//	            Handler: func(post *post.Post) error {
+//	                fmt.Printf("New post with images: %s\n", post.Url())
+//	                return nil
+//	            },
+//	        },
+//	    },
+//	}
+//	err := client.SubscribeToFirehose(ctx, callbacks)
+func (c *BskyClient) SubscribeToFirehose(ctx context.Context, callbacks *firehose.EnhancedFirehoseCallbacks) error {
+	if c.firehose == nil {
+		c.firehose = firehose.NewEnhancedFirehose(c)
+	}
+	return c.firehose.Subscribe(ctx, callbacks)
+}
+
+// CloseFirehose stops the firehose subscription and cleans up resources.
+// It's important to call this when you're done with the firehose to prevent
+// resource leaks.
+func (c *BskyClient) CloseFirehose() error {
+	if c.firehose != nil {
+		return c.firehose.Close()
+	}
+	return nil
+}
+
+// DownloadBlob downloads a blob (like an image) from the Bluesky network using its CID and owner's DID.
+// The CID (Content Identifier) can be found in several places:
+//   - post.Embed.Images[].Ref for direct image embeds
+//   - post.Embed.RecordWithMedia.Media.Images[].Ref for images in quoted posts
+//   - post.Embed.External.ThumbRef for external link thumbnails
+//
+// The DID (Decentralized Identifier) can be found in:
+//   - post.Repo for the post author's DID
+//   - post.Record.Uri for quoted/embedded post DIDs
+//
+// It returns the raw blob data, the detected content type (e.g., "image/jpeg"),
+// and any error that occurred during download.
+//
+// Example:
+//
+//	data, contentType, err := client.DownloadBlob(ctx, img.Ref, post.Repo)
+//	if err != nil {
+//	    return fmt.Errorf("failed to download: %w", err)
+//	}
+func (c *BskyClient) DownloadBlob(ctx context.Context, cid string, did string) ([]byte, string, error) {
+	if err := c.ensureValidSession(ctx); err != nil {
+		return nil, "", err
+	}
+
+	data, err := atproto.SyncGetBlob(ctx, c.client, cid, did)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to download blob: %w", err)
+	}
+
+	// Try to detect content type from the first few bytes
+	contentType := http.DetectContentType(data)
+
+	return data, contentType, nil
 }

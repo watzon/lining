@@ -1,4 +1,4 @@
-package client
+package config
 
 import (
 	"strconv"
@@ -25,7 +25,7 @@ type Config struct {
 	BurstSize         int
 
 	// Firehose configuration
-	FirehoseURL      string
+	FirehoseURL            string
 	FirehoseReconnectDelay time.Duration
 	FirehoseBufferSize     int
 
@@ -34,20 +34,20 @@ type Config struct {
 }
 
 // DefaultConfig returns a Config with sensible defaults
-func DefaultConfig() *Config {
+func Default() *Config {
 	return &Config{
-		ServerURL:         "https://bsky.social",
-		Timeout:           30 * time.Second,
-		RetryAttempts:     3,
-		RetryWaitTime:     time.Second,
-		MaxIdleConns:      10,
-		IdleConnTimeout:   120 * time.Second,
-		RequestsPerMinute: 60,
-		BurstSize:         5,
-		FirehoseURL:       "wss://bsky.network/xrpc/com.atproto.sync.subscribeRepos",
+		ServerURL:              "https://bsky.social",
+		Timeout:                30 * time.Second,
+		RetryAttempts:          3,
+		RetryWaitTime:          time.Second,
+		MaxIdleConns:           10,
+		IdleConnTimeout:        120 * time.Second,
+		RequestsPerMinute:      60,
+		BurstSize:              5,
+		FirehoseURL:            "wss://bsky.network/xrpc/com.atproto.sync.subscribeRepos",
 		FirehoseReconnectDelay: 5 * time.Second,
 		FirehoseBufferSize:     1000,
-		Debug:             false,
+		Debug:                  false,
 	}
 }
 
