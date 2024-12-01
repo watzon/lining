@@ -7,6 +7,7 @@ import (
 
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-car"
+	"github.com/watzon/lining/interaction"
 	"github.com/watzon/lining/post"
 )
 
@@ -15,11 +16,10 @@ type RepoOperation struct {
 	Action string // create, update, delete
 	Path   string // record path
 	Cid    string // content identifier
-	Record []byte // raw record data
 	Blocks []byte // CAR format blocks
 }
 
-// DecodeRecord attempts to decode the raw record into a specific type
+// DecodeRecord attempts to decode the record from blocks using the CID
 func (op *RepoOperation) DecodeRecord(target any) error {
 	if op.Blocks == nil {
 		return fmt.Errorf("no blocks data available to decode")
@@ -99,20 +99,87 @@ type TombstoneEvent struct {
 	Time string // when it was tombstoned
 }
 
-// PostFilter is a function that filters Post events
-type PostFilter func(post *post.Post) bool
+// RawOperationHandler handles raw operations
+type RawOperationHandler interface {
+	HandleRawOperation(op *RepoOperation) error
+}
 
-// HandleFilter is a function that filters Handle events
-type HandleFilter func(evt *HandleEvent) bool
+// PostFilter is a function that filters posts
+type PostFilter func(*post.Post) bool
 
-// InfoFilter is a function that filters Info events
-type InfoFilter func(evt *InfoEvent) bool
+// HandleFilter is a function that filters handle events
+type HandleFilter func(*HandleEvent) bool
 
-// MigrateFilter is a function that filters Migrate events
-type MigrateFilter func(evt *MigrateEvent) bool
+// InfoFilter is a function that filters info events
+type InfoFilter func(*InfoEvent) bool
 
-// TombstoneFilter is a function that filters Tombstone events
-type TombstoneFilter func(evt *TombstoneEvent) bool
+// PostHandlerWithFilter combines a post handler with its filters
+type PostHandlerWithFilter struct {
+	Handler func(*post.Post) error
+	Filters []PostFilter
+}
+
+// HandleHandlerWithFilter combines a handle handler with its filters
+type HandleHandlerWithFilter struct {
+	Handler func(*HandleEvent) error
+	Filters []HandleFilter
+}
+
+// InfoHandlerWithFilter combines an info handler with its filters
+type InfoHandlerWithFilter struct {
+	Handler func(*InfoEvent) error
+	Filters []InfoFilter
+}
+
+// MigrateHandlerWithFilter combines a migrate handler with its filters
+type MigrateHandlerWithFilter struct {
+	Handler func(*MigrateEvent) error
+	Filters []MigrateFilter
+}
+
+// TombstoneHandlerWithFilter combines a tombstone handler with its filters
+type TombstoneHandlerWithFilter struct {
+	Handler func(*TombstoneEvent) error
+	Filters []TombstoneFilter
+}
+
+// FirehoseHandler represents a generic handler for firehose events
+type FirehoseHandler interface {
+	HandleRawOperation(op *RepoOperation) error
+}
+
+// EnhancedFirehoseCallbacks contains all the callback handlers
+type EnhancedFirehoseCallbacks struct {
+	*FirehoseCallbacks
+	Handlers        []RawOperationHandler
+	PostHandlers    []PostHandlerWithFilter
+	HandleHandlers  []HandleHandlerWithFilter
+	InfoHandlers    []InfoHandlerWithFilter
+	MigrateHandlers []MigrateHandlerWithFilter
+	TombstoneHandlers []TombstoneHandlerWithFilter
+	FollowHandlers  []interaction.FollowHandlerWithFilter
+	LikeHandlers    []interaction.LikeHandlerWithFilter
+	RepostHandlers  []interaction.RepostHandlerWithFilter
+	CommentHandlers []interaction.CommentHandlerWithFilter
+}
+
+// FirehoseCallbacks defines callbacks for different firehose events
+type FirehoseCallbacks struct {
+	// OnCommit is called when a repository commit occurs
+	OnCommit func(evt *CommitEvent) error
+
+	// OnHandle is called when a handle change occurs
+	OnHandle func(evt *HandleEvent) error
+
+	// OnInfo is called when repository information is received
+	OnInfo func(evt *InfoEvent) error
+
+	// OnMigrate is called when a repository migration occurs
+	OnMigrate func(evt *MigrateEvent) error
+
+	// OnTombstone is called when a repository is tombstoned
+	OnTombstone func(evt *TombstoneEvent) error
+}
 
 // OnPostHandler handles post events with optional filters
 type OnPostHandler struct {
@@ -144,36 +211,8 @@ type OnTombstoneHandler struct {
 	Handler func(evt *TombstoneEvent) error
 }
 
-// FirehoseHandler represents a generic handler for firehose events
-type FirehoseHandler interface {
-	HandleRawOperation(op *RepoOperation) error
-}
+// MigrateFilter is a function that filters Migrate events
+type MigrateFilter func(evt *MigrateEvent) bool
 
-// EnhancedFirehoseCallbacks extends FirehoseCallbacks with additional functionality
-type EnhancedFirehoseCallbacks struct {
-	*FirehoseCallbacks
-	Handlers          []FirehoseHandler
-	PostHandlers      []*OnPostHandler
-	HandleHandlers    []*OnHandleHandler
-	InfoHandlers      []*OnInfoHandler
-	MigrateHandlers   []*OnMigrateHandler
-	TombstoneHandlers []*OnTombstoneHandler
-}
-
-// FirehoseCallbacks defines callbacks for different firehose events
-type FirehoseCallbacks struct {
-	// OnCommit is called when a repository commit occurs
-	OnCommit func(evt *CommitEvent) error
-
-	// OnHandle is called when a handle change occurs
-	OnHandle func(evt *HandleEvent) error
-
-	// OnInfo is called when repository information is received
-	OnInfo func(evt *InfoEvent) error
-
-	// OnMigrate is called when a repository migration occurs
-	OnMigrate func(evt *MigrateEvent) error
-
-	// OnTombstone is called when a repository is tombstoned
-	OnTombstone func(evt *TombstoneEvent) error
-}
+// TombstoneFilter is a function that filters Tombstone events
+type TombstoneFilter func(evt *TombstoneEvent) bool
