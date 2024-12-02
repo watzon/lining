@@ -1,6 +1,8 @@
 package post
 
 import (
+	"fmt"
+
 	"github.com/bluesky-social/indigo/api/bsky"
 )
 
@@ -78,7 +80,7 @@ func ExtractFacetsFromFeedPost(feedPost *bsky.FeedPost) []Facet {
 					Text:  text,
 				})
 			default:
-				panic("unreachable")
+				fmt.Printf("Unknown facet type: %v\n", feature)
 			}
 		}
 	}

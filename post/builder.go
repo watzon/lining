@@ -1,7 +1,9 @@
 package post
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"net/url"
 	"regexp"
 	"sort"
@@ -9,8 +11,10 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/bluesky-social/indigo/api/atproto"
 	"github.com/bluesky-social/indigo/api/bsky"
 	lexutil "github.com/bluesky-social/indigo/lex/util"
+	"github.com/bluesky-social/indigo/xrpc"
 	"github.com/watzon/lining/models"
 )
 
@@ -59,6 +63,8 @@ type BuilderOptions struct {
 	AutoLink bool
 	// DefaultLanguage sets the default language for the post
 	DefaultLanguage string
+	// Client is the xrpc client used for fetching posts
+	Client *xrpc.Client
 }
 
 // BuilderOption is a function that configures a BuilderOptions struct
@@ -109,6 +115,13 @@ func WithDefaultLanguage(lang string) BuilderOption {
 	}
 }
 
+// WithClient returns a BuilderOption that sets the xrpc client
+func WithClient(client *xrpc.Client) BuilderOption {
+	return func(opts *BuilderOptions) {
+		opts.Client = client
+	}
+}
+
 // DefaultOptions returns the default BuilderOptions
 func DefaultOptions() BuilderOptions {
 	return BuilderOptions{
@@ -139,6 +152,7 @@ func DefaultOptions() BuilderOptions {
 type Builder struct {
 	segments []segment
 	embed    models.Embed
+	reply    *bsky.FeedPost_ReplyRef
 	err      error
 	options  BuilderOptions
 }
@@ -539,6 +553,77 @@ func (b *Builder) shouldAddSpace(curr, next string) bool {
 	return curr != "" && next != ""
 }
 
+// WithReply sets the post as a reply to another post using the provided ReplyRef.
+// The ReplyRef must contain both the parent and root references.
+func (b *Builder) WithReply(reply *bsky.FeedPost_ReplyRef) *Builder {
+	if b.err != nil {
+		return b
+	}
+
+	if reply == nil {
+		b.err = errors.New("reply reference cannot be nil")
+		return b
+	}
+
+	if reply.Parent == nil || reply.Root == nil {
+		b.err = errors.New("reply reference must contain both parent and root")
+		return b
+	}
+
+	b.reply = reply
+	return b
+}
+
+// WithReplyToUri sets the post as a reply to another post using the provided URI.
+// The URI should be in the format "at://did:plc:xxx/app.bsky.feed.post/xxx".
+// This method will extract the necessary information from the URI to build the ReplyRef.
+func (b *Builder) WithReplyToUri(uri string) *Builder {
+	if b.err != nil {
+		return b
+	}
+
+	if uri == "" {
+		// Fail silently if the URI is empty
+		return b
+	}
+
+	// Use our existing ParsePostURI function to validate and parse the URI
+	repo, collection, rkey, err := ParsePostURI(uri)
+	if err != nil {
+		b.err = fmt.Errorf("invalid reply URI: %w", err)
+		return b
+	}
+
+	// Verify this is a post
+	if collection != "app.bsky.feed.post" {
+		b.err = errors.New("invalid reply URI: not a post")
+		return b
+	}
+
+	// Fetch the post to get its CID
+	ctx := context.Background()
+	resp, err := atproto.RepoGetRecord(ctx, b.options.Client, "", collection, repo, rkey)
+	if err != nil {
+		b.err = fmt.Errorf("failed to fetch reply post: %w", err)
+		return b
+	}
+
+	// Create the ReplyRef with the parent reference
+	// For now, we'll set both parent and root to the same post
+	// In the future, we might want to fetch the actual root if this is a reply to a reply
+	ref := &atproto.RepoStrongRef{
+		Cid: *resp.Cid,
+		Uri: uri,
+	}
+
+	b.reply = &bsky.FeedPost_ReplyRef{
+		Parent: ref,
+		Root:   ref,
+	}
+
+	return b
+}
+
 // Build creates the final Bluesky post, combining all the added text,
 // facets, and embeds into a complete post structure.
 func (b *Builder) Build() (bsky.FeedPost, error) {
@@ -604,6 +689,7 @@ func (b *Builder) Build() (bsky.FeedPost, error) {
 		Facets:        facets,
 		LexiconTypeID: "app.bsky.feed.post",
 		CreatedAt:     time.Now().Format(time.RFC3339),
+		Reply:         b.reply,
 	}
 
 	// Handle embeds

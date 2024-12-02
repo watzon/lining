@@ -4,8 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/bluesky-social/indigo/api/atproto"
-	appbsky "github.com/bluesky-social/indigo/api/bsky"
+	"github.com/bluesky-social/indigo/api/bsky"
 	"github.com/watzon/lining/post"
 )
 
@@ -26,25 +25,22 @@ func (c *BskyClient) GetPost(ctx context.Context, uri string) (*post.Post, error
 		return nil, fmt.Errorf("failed to parse post URI: %w", err)
 	}
 
-	// Fetch post
-	resp, err := atproto.RepoGetRecord(ctx, c.client, "", collection, repo, rkey)
+	// Use bsky.FeedGetPostThread to get the post
+	resp, err := bsky.FeedGetPostThread(ctx, c.client, 0, 0, uri)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get post: %w", err)
+		fmt.Printf("Debug info - Collection: %s, Repo: %s, Rkey: %s\n", collection, repo, rkey)
+		if xerr, ok := err.(interface{ Unwrap() error }); ok {
+			fmt.Printf("Underlying error: %v\n", xerr.Unwrap())
+		}
+		return nil, fmt.Errorf("failed to get post (repo=%s rkey=%s): %w", repo, rkey, err)
 	}
 
-	// Decode post
-	feedPost, ok := resp.Value.Val.(*appbsky.FeedPost)
-	if !ok {
-		return nil, fmt.Errorf("failed to decode post")
+	if resp == nil || resp.Thread == nil || resp.Thread.FeedDefs_ThreadViewPost == nil {
+		return nil, fmt.Errorf("got nil response or post data")
 	}
 
-	// Convert to our post type
-	p, err := post.PostFromFeedPost(feedPost, repo, rkey)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert post: %w", err)
-	}
-
-	return p, nil
+	// Convert the post view to our Post type
+	return post.PostFromFeedDefs_PostView(resp.Thread.FeedDefs_ThreadViewPost.Post)
 }
 
 // GetPosts retrieves multiple posts by their URIs. This is more efficient than

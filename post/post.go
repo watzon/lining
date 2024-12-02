@@ -11,6 +11,7 @@ import (
 type Post struct {
 	Repo string // Author DID
 	Rkey string // Post ID
+	Cid  string // Content ID
 
 	// Counts
 	Likes   int64
@@ -46,6 +47,28 @@ func (p *Post) Url() string {
 func (p *Post) String() string {
 	return fmt.Sprintf("Post{Text: %s, CreatedAt: %s, Embed: %v, Facets: %v, Labels: %s, Langs: %s, Reply: %v, Tags: %s}",
 		p.Text, p.CreatedAt, p.Embed, p.Facets, p.Labels, p.Langs, p.ReplyRef, p.Tags)
+}
+
+// GetTags returns a list of all tags in the post, both those included as facets and the
+// embedded ones
+func (p *Post) GetTags() []string {
+	tags := p.Tags
+	for _, facet := range p.Facets {
+		if facet.Type.Type == "app.bsky.richtext.facet#tag" {
+			tags = append(tags, facet.Type.FacetTypeTag.Tag)
+		}
+	}
+	return tags
+}
+
+// HasTag returns true if the post has the given tag (case-insensitive)
+func (p *Post) HasTag(tag string) bool {
+	for _, t := range p.GetTags() {
+		if strings.EqualFold(t, tag) {
+			return true
+		}
+	}
+	return false
 }
 
 // PostsFromGetPostsResponse converts a bsky.FeedGetPosts_Output to a slice of Post
@@ -84,6 +107,7 @@ func PostsFromGetPostsResponse(resp *bsky.FeedGetPosts_Output) (posts []*Post, e
 			Tags:      feedPost.Tags,
 			ReplyUri:  replyUri,
 			ReplyRef:  feedPost.Reply,
+			Cid:       post.Cid,
 		})
 	}
 	return
@@ -108,6 +132,7 @@ func PostFromFeedDefs_PostView(post *bsky.FeedDefs_PostView) (*Post, error) {
 
 	extracted.Repo = repo
 	extracted.Rkey = rkey
+	extracted.Cid = post.Cid
 
 	return extracted, nil
 }

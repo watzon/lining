@@ -120,6 +120,11 @@ func (c *BskyClient) Connect(ctx context.Context) error {
 	return nil
 }
 
+// GetConfig returns the client's configuration
+func (c *BskyClient) GetConfig() *config.Config {
+	return c.cfg
+}
+
 // ensureValidSession checks if the current session is valid and refreshes it if necessary.
 // This is called automatically by methods that require authentication.
 func (c *BskyClient) ensureValidSession(ctx context.Context) error {
@@ -417,8 +422,12 @@ func (c *BskyClient) PostToFeed(ctx context.Context, post appbsky.FeedPost) (str
 }
 
 // NewPostBuilder creates a new post builder with the specified options
-func NewPostBuilder(opts ...post.BuilderOption) *post.Builder {
-	return post.NewBuilder(opts...)
+func (c *BskyClient) NewPostBuilder(opts ...post.BuilderOption) *post.Builder {
+	// Add the client option first, then any user-provided options
+	allOpts := append([]post.BuilderOption{
+		post.WithClient(c.client),
+	}, opts...)
+	return post.NewBuilder(allOpts...)
 }
 
 // GetAccessToken returns the current access token
